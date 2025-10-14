@@ -21,7 +21,7 @@ jobs:
 
     steps:
     - name: Checkout changes
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     
     - name: install other depend lib
       run: |
@@ -70,3 +70,13 @@ jobs:
         make
         ldd src/wifidogx
         ldd src/wdctlx
+    - name: Pack binaries
+      run: |
+        cd build/src
+        tar czf apfree-wifidog-${{ github.event.inputs.firewall }}.tar.gz wifidogx wdctlx
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: apfree-wifidog-${{ github.event.inputs.firewall }}-${{ runner.arch }}
+        path: build/src/apfree-wifidog-${{ github.event.inputs.firewall }}.tar.gz
+        retention-days: 90
