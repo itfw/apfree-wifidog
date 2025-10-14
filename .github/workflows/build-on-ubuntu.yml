@@ -1,4 +1,4 @@
-name: compile apfree-wifidog in ubuntu system
+name: compile AW
 
 on:
   workflow_dispatch:
