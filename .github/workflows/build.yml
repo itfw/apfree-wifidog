@@ -30,7 +30,6 @@ jobs:
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      # --- 缓存 feeds ---
       - name: Cache OpenWrt Feeds
         id: cache-feeds
         uses: actions/cache@v4
@@ -39,14 +38,12 @@ jobs:
             sdk/feeds/
           key: openwrt-feeds-24.10.5
 
-      # --- 修正：仅在缓存未命中时更新 feeds ---
       - name: Update feeds (if cache missed)
         working-directory: ./sdk
         if: steps.cache-feeds.outputs.cache-hit != 'true'
         run: |
           mkdir -p feeds/packages feeds/base
 
-      # --- 修正：安装依赖包 ---
       - name: Install dependencies from feeds
         working-directory: ./sdk
         run: |
@@ -120,7 +117,7 @@ jobs:
             '		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\' \
             '		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\' \
             '		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\' \
-            '		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \\' \ # <--- 新增：显式设置 CMAKE_PREFIX_PATH
+            '		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \\' \
             '		&& \' \
             '	make -j$(NUM_JOBS)' \
             'endef' \
