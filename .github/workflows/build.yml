@@ -76,8 +76,8 @@ jobs:
           mkdir -p sdk/package/apfree-wifidog/files
           cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
           # Copy the generation script into the runner's context if needed, or run it from its location
-          # Here we run it directly from .github/scripts/
-          ./.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
+          chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
+          sh ./apfree-wifidog-src/.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
 
       - name: Build apfree-wifidog IPK
         working-directory: ./sdk
