@@ -77,15 +77,29 @@ jobs:
           ./scripts/feeds install -f libopenssl
           ./scripts/feeds install -f libcurl
           ./scripts/feeds install -f libbpf
-      - name: Find libevent_openssl library
+      
+      - name: Add luci feed source and update
         working-directory: ./sdk
         run: |
-          echo "Searching for libevent_openssl-2.1.so.7 in staging_dir..."
-          find staging_dir -name "libevent_openssl-2.1.so.7" -type f
-          echo "Searching for any libevent_openssl related files..."
-          find staging_dir -name "*libevent_openssl*" -type f
-          echo "Searching for any libevent related .so files..."
-          find staging_dir -name "*libevent*.so*" -type f
+          # 检查 feeds.conf 是否存在，如果不存在则从 feeds.conf.default 复制
+          if [ ! -f "feeds.conf" ]; then
+            if [ -f "feeds.conf.default" ]; then
+              cp feeds.conf.default feeds.conf
+              echo "Copied feeds.conf.default to feeds.conf"
+            else
+              echo "ERROR: Neither feeds.conf nor feeds.conf.default found!" >&2
+              exit 1
+            fi
+          fi
+          # 检查 luci feed 是否已存在，避免重复添加
+          if ! grep -q "src-git luci" feeds.conf; then
+            echo "src-git luci https://github.com/openwrt/luci.git" >> feeds.conf
+            echo "Added luci feed to feeds.conf"
+          else
+            echo "luci feed already exists in feeds.conf"
+          fi
+          # 更新 luci feed
+          ./scripts/feeds update luci
 
       - name: Checkout your forked apfree-wifidog source
         uses: actions/checkout@v4
