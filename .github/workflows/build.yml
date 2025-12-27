@@ -12,17 +12,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Cache OpenWrt SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            sdk/
+          key: openwrt-sdk-24.10.0-x86_64
+
+      - name: Download OpenWrt SDK for x86_64 (24.10.0) from mirror
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          SDK_URL="https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-12.4.0_musl.Linux-x86_64.tar.xz"
+          wget -q "$SDK_URL" -O sdk.tar.xz
+          tar -xf sdk.tar.xz
+          mv openwrt-sdk-* sdk
+
+      # --- 新增步骤：准备 libubox 和 libuci 包 ---
+      - name: Prepare libubox package
+        run: |
+          cd sdk
+          # 使用 OpenWrt packages feed 中的 libubox
+          ./scripts/feeds update packages
+          ./scripts/feeds install -a -p packages libubox
+
+      - name: Prepare libuci package
+        run: |
+          cd sdk
+          # 使用 OpenWrt packages feed 中的 libuci
+          ./scripts/feeds update packages
+          ./scripts/feeds install -a -p packages libuci
+
       - name: Checkout your forked apfree-wifidog source
         uses: actions/checkout@v4
         with:
           path: apfree-wifidog-src
-
-      - name: Download OpenWrt SDK for x86_64 (23.05.3)
-        run: |
-          SDK_URL="https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
-          wget -q "$SDK_URL" -O sdk.tar.xz
-          tar -xf sdk.tar.xz
-          mv openwrt-sdk-* sdk
 
       - name: Copy source and prepare package in SDK
         run: |
@@ -49,7 +73,7 @@ jobs:
             '  CATEGORY:=Network' \
             '  SUBMENU:=Captive Portals' \
             '  TITLE:=A free wifidog implementation' \
-            '  DEPENDS:=+libpthread +librt +libjson-c +iptables +kmod-ipt-nat +libopenssl +cmake' \
+            '  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +iptables +kmod-ipt-nat +cmake' \
             'endef' \
             '' \
             'define Package/apfree-wifidog/description' \
@@ -68,7 +92,7 @@ jobs:
             '		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \\' \
             '		-DCMAKE_C_COMPILER=$(TARGET_CC) \\' \
             '		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \\' \
-            '		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib -lpthread -lrt -ljson-c -lssl -lcrypto" \\' \
+            '		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \\' \
             '		-DCMAKE_INSTALL_PREFIX=/usr \\' \
             '		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \\' \
             '		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\' \
