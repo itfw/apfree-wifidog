@@ -5,14 +5,14 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-last  # 推荐固定版本，ubuntu-latest 可能变动
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout apfree-wifidog source
+      - name: Checkout apfree-wifidog source (not needed for SDK build)
         uses: actions/checkout@v4
         with:
           repository: liudf0716/apfree-wifidog
@@ -27,10 +27,9 @@ jobs:
 
       - name: Prepare apfree-wifidog package in SDK
         run: |
-          # Create package directory
           mkdir -p sdk/package/apfree-wifidog
+          mkdir -p sdk/package/apfree-wifidog/files
 
-          # Create Makefile
           cat > sdk/package/apfree-wifidog/Makefile << 'EOF'
 include $(TOPDIR)/rules.mk
 
@@ -78,23 +77,20 @@ endef
 $(eval $(call BuildPackage,apfree-wifidog))
 EOF
 
-          # Create init script (minimal)
-          mkdir -p sdk/package/apfree-wifidog/files
           cat > sdk/package/apfree-wifidog/files/wifidog.init << 'EOF'
 #!/bin/sh /etc/rc.common
 
 START=99
-
 USE_PROCD=1
 
 start_service() {
     procd_open_instance
     procd_set_param command /usr/bin/wifidog
-    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
+    procd_set_param respawn
     procd_close_instance
 }
 
-shutdown() {
+stop_service() {
     killall wifidog 2>/dev/null
 }
 EOF
@@ -102,23 +98,18 @@ EOF
       - name: Build IPK package
         working-directory: ./sdk
         run: |
-          # Update feeds (in case of dependencies)
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          # Configure (minimal, just to enable the package)
           make defconfig
-
-          # Compile only apfree-wifidog
           make package/apfree-wifidog/compile V=s
 
-      - name: Find and list built IPK
+      - name: Find built IPK
         run: |
-          find . -name "apfree-wifidog_*.ipk" -exec ls -lh {} \;
+          find . -name "apfree-wifidog_*.ipk" -type f
 
-      - name: Upload IPK as artifact
+      - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-x86_64-ipk
+          name: apfree-wifidog-x86_64
           path: ./sdk/bin/packages/x86_64/base/apfree-wifidog_*.ipk
           if-no-files-found: error
