@@ -30,13 +30,11 @@ jobs:
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      # --- 更新：安装所有必要的依赖包 ---
       - name: Update feeds and install dependencies
         working-directory: ./sdk
         run: |
           ./scripts/feeds update packages
           ./scripts/feeds update base
-          # 安装 apfree-wifidog 所需的库
           ./scripts/feeds install libubox
           ./scripts/feeds install libuci
           ./scripts/feeds install libjson-c
@@ -47,7 +45,7 @@ jobs:
           ./scripts/feeds install libmosquitto
           ./scripts/feeds install libopenssl
           ./scripts/feeds install libcurl
-          ./scripts/feeds install libbpf # 可能需要，如果 eBPF 功能被启用
+          ./scripts/feeds install libbpf
 
       - name: Checkout your forked apfree-wifidog source
         uses: actions/checkout@v4
@@ -57,11 +55,7 @@ jobs:
       - name: Copy source and prepare package in SDK
         run: |
           mkdir -p sdk/package/apfree-wifidog/files
-
-          # Copy the entire source directory into the package folder as 'src'
           cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
-
-          # Write Makefile using printf (YAML-safe)
           printf '%s\n' \
             'include $(TOPDIR)/rules.mk' \
             '' \
@@ -110,16 +104,14 @@ jobs:
             '' \
             'define Package/apfree-wifidog/install' \
             '	$(INSTALL_DIR) $(1)/usr/bin' \
-            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/' \ # <--- 注意：编译出的是 wifidogx
-            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/' \   # <--- 以及 wdctlx
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/' \
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/' \
             '	$(INSTALL_DIR) $(1)/etc/init.d' \
             '	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog' \
             'endef' \
             '' \
             '$(eval $(call BuildPackage,apfree-wifidog))' \
             > sdk/package/apfree-wifidog/Makefile
-
-          # Write init script (可能需要调整启动命令为 wifidogx)
           printf '%s\n' \
             '#!/bin/sh /etc/rc.common' \
             '' \
@@ -128,13 +120,13 @@ jobs:
             '' \
             'start_service() {' \
             '    procd_open_instance' \
-            '    procd_set_param command /usr/bin/wifidogx' \ # <--- 启动 wifidogx
+            '    procd_set_param command /usr/bin/wifidogx' \
             '    procd_set_param respawn' \
             '    procd_close_instance' \
             '}' \
             '' \
             'stop_service() {' \
-            '    killall wifidogx 2>/dev/null' \ # <--- 杀死 wifidogx
+            '    killall wifidogx 2>/dev/null' \
             '}' \
             > sdk/package/apfree-wifidog/files/wifidog.init
 
