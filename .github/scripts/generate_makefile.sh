@@ -35,7 +35,7 @@ define Package/apfree-wifidog
   CATEGORY:=Network
   SUBMENU:=Captive Portals
   TITLE:=A free wifidog implementation
-  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat
+  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libevent_openssl +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat
 endef
 
 define Package/apfree-wifidog/description
