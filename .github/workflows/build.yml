@@ -12,12 +12,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout apfree-wifidog source (not needed for SDK build)
-        uses: actions/checkout@v4
-        with:
-          repository: liudf0716/apfree-wifidog
-          path: apfree-wifidog
-
       - name: Download OpenWrt SDK for x86_64 (23.05.3)
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
@@ -27,73 +21,74 @@ jobs:
 
       - name: Prepare apfree-wifidog package in SDK
         run: |
-          mkdir -p sdk/package/apfree-wifidog
           mkdir -p sdk/package/apfree-wifidog/files
 
-          cat > sdk/package/apfree-wifidog/Makefile << 'EOF'
-include $(TOPDIR)/rules.mk
+          # Write Makefile using printf to avoid YAML/here-document issues
+          printf '%s\n' \
+            'include $(TOPDIR)/rules.mk' \
+            '' \
+            'PKG_NAME:=apfree-wifidog' \
+            'PKG_VERSION:=1.3.0' \
+            'PKG_RELEASE:=1' \
+            '' \
+            'PKG_SOURCE_PROTO:=git' \
+            'PKG_SOURCE_URL:=https://github.com/liudf0716/apfree-wifidog.git' \
+            'PKG_SOURCE_VERSION:=v$(PKG_VERSION)' \
+            'PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)' \
+            'PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz' \
+            '' \
+            'PKG_MAINTAINER:=GitHub Actions' \
+            'PKG_LICENSE:=GPL-2.0' \
+            '' \
+            'include $(INCLUDE_DIR)/package.mk' \
+            '' \
+            'define Package/apfree-wifidog' \
+            '  SECTION:=net' \
+            '  CATEGORY:=Network' \
+            '  SUBMENU:=Captive Portals' \
+            '  TITLE:=A free wifidog implementation' \
+            '  DEPENDS:=+libpthread +librt +libjson-c +iptables +kmod-ipt-nat +libopenssl' \
+            'endef' \
+            '' \
+            'define Package/apfree-wifidog/description' \
+            '  apfree_wifidog is a free implementation of the wifidog captive portal.' \
+            'endef' \
+            '' \
+            'define Build/Compile' \
+            '	$(MAKE) -C $(PKG_BUILD_DIR) \' \
+            '		$(TARGET_CONFIGURE_OPTS) \' \
+            '		CFLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \' \
+            '		LDFLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib"' \
+            'endef' \
+            '' \
+            'define Package/apfree-wifidog/install' \
+            '	$(INSTALL_DIR) $(1)/usr/bin' \
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/wifidog $(1)/usr/bin/' \
+            '	$(INSTALL_DIR) $(1)/etc/init.d' \
+            '	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog' \
+            'endef' \
+            '' \
+            '$(eval $(call BuildPackage,apfree-wifidog))' \
+            > sdk/package/apfree-wifidog/Makefile
 
-PKG_NAME:=apfree-wifidog
-PKG_VERSION:=1.3.0
-PKG_RELEASE:=1
-
-PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/liudf0716/apfree-wifidog.git
-PKG_SOURCE_VERSION:=v$(PKG_VERSION)
-PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-
-PKG_MAINTAINER:=GitHub Actions
-PKG_LICENSE:=GPL-2.0
-
-include $(INCLUDE_DIR)/package.mk
-
-define Package/apfree-wifidog
-  SECTION:=net
-  CATEGORY:=Network
-  SUBMENU:=Captive Portals
-  TITLE:=A free wifidog implementation
-  DEPENDS:=+libpthread +librt +libjson-c +iptables +kmod-ipt-nat +libopenssl
-endef
-
-define Package/apfree-wifidog/description
-  apfree_wifidog is a free implementation of the wifidog captive portal.
-endef
-
-define Build/Compile
-	$(MAKE) -C $(PKG_BUILD_DIR) \
-		$(TARGET_CONFIGURE_OPTS) \
-		CFLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \
-		LDFLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib"
-endef
-
-define Package/apfree-wifidog/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/wifidog $(1)/usr/bin/
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
-endef
-
-$(eval $(call BuildPackage,apfree-wifidog))
-EOF
-
-          cat > sdk/package/apfree-wifidog/files/wifidog.init << 'EOF'
-#!/bin/sh /etc/rc.common
-
-START=99
-USE_PROCD=1
-
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/wifidog
-    procd_set_param respawn
-    procd_close_instance
-}
-
-stop_service() {
-    killall wifidog 2>/dev/null
-}
-EOF
+          # Write init script
+          printf '%s\n' \
+            '#!/bin/sh /etc/rc.common' \
+            '' \
+            'START=99' \
+            'USE_PROCD=1' \
+            '' \
+            'start_service() {' \
+            '    procd_open_instance' \
+            '    procd_set_param command /usr/bin/wifidog' \
+            '    procd_set_param respawn' \
+            '    procd_close_instance' \
+            '}' \
+            '' \
+            'stop_service() {' \
+            '    killall wifidog 2>/dev/null' \
+            '}' \
+            > sdk/package/apfree-wifidog/files/wifidog.init
 
       - name: Build IPK package
         working-directory: ./sdk
