@@ -77,6 +77,15 @@ jobs:
           ./scripts/feeds install -f libopenssl
           ./scripts/feeds install -f libcurl
           ./scripts/feeds install -f libbpf
+      - name: Find libevent_openssl library
+        working-directory: ./sdk
+        run: |
+          echo "Searching for libevent_openssl-2.1.so.7 in staging_dir..."
+          find staging_dir -name "libevent_openssl-2.1.so.7" -type f
+          echo "Searching for any libevent_openssl related files..."
+          find staging_dir -name "*libevent_openssl*" -type f
+          echo "Searching for any libevent related .so files..."
+          find staging_dir -name "*libevent*.so*" -type f
 
       - name: Checkout your forked apfree-wifidog source
         uses: actions/checkout@v4
