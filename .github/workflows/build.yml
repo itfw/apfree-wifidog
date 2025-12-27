@@ -26,10 +26,10 @@ jobs:
 
       - name: Copy source and prepare package in SDK
         run: |
-          mkdir -p sdk/package/apfree-wifidog/src
-          cp -r apfree-wifidog-src/* sdk/package/apfree-wifidog/src/
-
           mkdir -p sdk/package/apfree-wifidog/files
+
+          # Copy the entire source directory into the package folder as 'src'
+          cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
 
           # Write Makefile using printf (YAML-safe)
           printf '%s\n' \
@@ -49,7 +49,7 @@ jobs:
             '  CATEGORY:=Network' \
             '  SUBMENU:=Captive Portals' \
             '  TITLE:=A free wifidog implementation' \
-            '  DEPENDS:=+libpthread +librt +libjson-c +iptables +kmod-ipt-nat +libopenssl' \
+            '  DEPENDS:=+libpthread +librt +libjson-c +iptables +kmod-ipt-nat +libopenssl +cmake' \
             'endef' \
             '' \
             'define Package/apfree-wifidog/description' \
@@ -57,19 +57,30 @@ jobs:
             'endef' \
             '' \
             'define Build/Prepare' \
-            '	$(CP) ./src/* $(PKG_BUILD_DIR)/' \
+            '	$(CP) ./src/. $(PKG_BUILD_DIR)/' \
             'endef' \
             '' \
             'define Build/Compile' \
-            '	$(MAKE) -C $(PKG_BUILD_DIR) \' \
-            '		$(TARGET_CONFIGURE_OPTS) \' \
-            '		CFLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \' \
-            '		LDFLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib"' \
+            '	mkdir -p $(PKG_BUILD_DIR)/build && \' \
+            '	cd $(PKG_BUILD_DIR)/build && \' \
+            '	cmake .. \\' \
+            '		-DCMAKE_SYSTEM_NAME=Linux \\' \
+            '		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \\' \
+            '		-DCMAKE_C_COMPILER=$(TARGET_CC) \\' \
+            '		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \\' \
+            '		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib -lpthread -lrt -ljson-c -lssl -lcrypto" \\' \
+            '		-DCMAKE_INSTALL_PREFIX=/usr \\' \
+            '		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \\' \
+            '		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\' \
+            '		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\' \
+            '		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\' \
+            '		&& \' \
+            '	make -j$(NUM_JOBS)' \
             'endef' \
             '' \
             'define Package/apfree-wifidog/install' \
             '	$(INSTALL_DIR) $(1)/usr/bin' \
-            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/wifidog $(1)/usr/bin/' \
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidog $(1)/usr/bin/' \
             '	$(INSTALL_DIR) $(1)/etc/init.d' \
             '	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog' \
             'endef' \
