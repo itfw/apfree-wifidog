@@ -54,6 +54,7 @@ jobs:
             exit 1
           fi
 
+          ./scripts/feeds update packages base
           ./scripts/feeds install -a libevent2-full
           ./scripts/feeds install -a libevent2-openssl
           ./scripts/feeds install -a openssl-util
@@ -61,10 +62,10 @@ jobs:
 
           ./scripts/feeds install -a libevent2-core
           ./scripts/feeds install -a libevent2-extra
-          ./scripts/feeds install -a libevent2-openssl
+          ./scripts/feeds install -f libevent2-openssl
           ./scripts/feeds install -a libevent2-pthreads
           
-          ./scripts/feeds update packages base
+          
           ./scripts/feeds install -f libubox
           ./scripts/feeds install -f libuci
           ./scripts/feeds install -f libjson-c
