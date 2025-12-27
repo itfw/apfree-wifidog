@@ -106,9 +106,7 @@ jobs:
             'define Build/Compile' \
             '	mkdir -p $(PKG_BUILD_DIR)/build && \' \
             '	cd $(PKG_BUILD_DIR)/build && \' \
-            '	# Set PKG_CONFIG_PATH' \
             '	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig" && \' \
-            '	echo "Attempting CMake configuration with PKG_CONFIG_PATH..." && \' \
             '	if cmake .. \\' \
             '		-DCMAKE_SYSTEM_NAME=Linux \\' \
             '		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \\' \
