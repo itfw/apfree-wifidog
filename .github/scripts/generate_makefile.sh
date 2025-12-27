@@ -87,7 +87,7 @@ define Build/Compile
 	make -j$(NUM_JOBS) || make
 	# --- 构建成功后，列出 PKG_BUILD_DIR 目录内容 ---
 	echo "=== Contents of PKG_BUILD_DIR after build ==="; \
-	ls -la $(PKG_BUILD_DIR)/
+	ls -la $(PKG_BUILD_DIR)/build/src/
 endef
 
 define Package/apfree-wifidog/install
