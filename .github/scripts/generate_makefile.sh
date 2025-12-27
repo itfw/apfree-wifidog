@@ -17,7 +17,7 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile ---
+# --- 生成 Makefile（带简单错误处理）---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
@@ -35,23 +35,23 @@ define Package/apfree-wifidog
   CATEGORY:=Network
   SUBMENU:=Captive Portals
   TITLE:=A free wifidog implementation
-  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat +cmake
+  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat
 endef
 
 define Package/apfree-wifidog/description
   apfree_wifidog is a free implementation of the wifidog captive portal.
 endef
 
-# --- 修正 Build/Prepare ---
 define Build/Prepare
-	$(CP) ./src/* $(PKG_BUILD_DIR)/ # 复制 src/ 下的所有内容到 PKG_BUILD_DIR 的顶层
+	$(CP) ./src/. $(PKG_BUILD_DIR)/
 endef
 
 define Build/Compile
-	mkdir -p $(PKG_BUILD_DIR)/build && \
-	cd $(PKG_BUILD_DIR)/build && \
-	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig" && \
-	if cmake .. \
+	mkdir -p $(PKG_BUILD_DIR)/build; \
+	cd $(PKG_BUILD_DIR)/build; \
+	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig"; \
+	echo "=== Starting CMake ==="; \
+	cmake .. \
 		-DCMAKE_SYSTEM_NAME=Linux \
 		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
 		-DCMAKE_C_COMPILER=$(TARGET_CC) \
@@ -61,79 +61,43 @@ define Build/Compile
 		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
 		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
 		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr; then \
-		echo "CMake configuration succeeded with PKG_CONFIG_PATH." && \
-		if make -j$(NUM_JOBS); then \
-			echo "Build succeeded." && \
-			# Verify the binaries exist after make
-			if [ -f wifidogx ] && [ -f wdctlx ]; then \
-				echo "wifidogx and wdctlx found in build directory." && \
-				true; \
-			else \
-				echo "ERROR: wifidogx or wdctlx not found in build directory after make." >&2 && \
-				ls -la . # List files for debugging && \
-				exit 1; \
-			fi; \
-		else \
-			echo "Build failed (make command failed)." >&2 && \
-			exit 1; \
-		fi; \
-	else \
-		echo "CMake configuration failed with PKG_CONFIG_PATH. Attempting fallback method..." && \
-		UCI_HEADER_PATH=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname) && \
-		if [ -n "$$UCI_HEADER_PATH" ]; then \
-			echo "Found uci.h in: $$UCI_HEADER_PATH" && \
-			rm -rf * && \
-			if cmake .. \
+		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY || { \
+		echo "=== CMake failed, trying fallback ==="; \
+		UCI_INC=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname); \
+		if [ -n "$$UCI_INC" ]; then \
+			echo "Found uci.h in: $$UCI_INC"; \
+			cmake .. \
 				-DCMAKE_SYSTEM_NAME=Linux \
 				-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
 				-DCMAKE_C_COMPILER=$(TARGET_CC) \
-				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_HEADER_PATH" \
+				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_INC" \
 				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
 				-DCMAKE_INSTALL_PREFIX=/usr \
 				-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
 				-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
 				-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
 				-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-				-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \
-				-DUCI_INCLUDE_DIRS="$$UCI_HEADER_PATH"; then \
-				echo "CMake configuration succeeded with explicit UCI_INCLUDE_DIRS." && \
-				if make -j$(NUM_JOBS); then \
-					echo "Build succeeded (fallback)." && \
-					# Verify the binaries exist after make (fallback)
-					if [ -f wifidogx ] && [ -f wdctlx ]; then \
-						echo "wifidogx and wdctlx found in build directory (fallback)." && \
-						true; \
-					else \
-						echo "ERROR: wifidogx or wdctlx not found in build directory after make (fallback)." >&2 && \
-						ls -la . # List files for debugging && \
-						exit 1; \
-					fi; \
-				else \
-					echo "Build failed (make command failed) in fallback method." >&2 && \
-					exit 1; \
-				fi; \
-			else \
-				echo "CMake configuration failed with explicit UCI_INCLUDE_DIRS. Build failed." >&2; \
-				exit 1; \
-			fi; \
+				-DUCI_INCLUDE_DIRS="$$UCI_INC"; \
 		else \
-			echo "ERROR: Could not find uci.h for fallback method." >&2; \
+			echo "ERROR: Could not find uci.h"; \
 			exit 1; \
 		fi; \
-	fi
+	}; \
+	echo "=== Starting make ==="; \
+	make -j$(NUM_JOBS) || make
 endef
 
 define Package/apfree-wifidog/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	# Verify binaries exist before installing (add error check here too)
-	if [ -f $(PKG_BUILD_DIR)/build/wifidogx ] && [ -f $(PKG_BUILD_DIR)/build/wdctlx ]; then \
-		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/ && \
-		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/; \
+	if [ -f $(PKG_BUILD_DIR)/build/wifidogx ]; then \
+		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/; \
 	else \
-		echo "ERROR: Binary not found during install phase!" >&2; \
+		echo "ERROR: wifidogx not found!"; \
+		find $(PKG_BUILD_DIR) -name "*wifidog*" -type f; \
 		exit 1; \
+	fi
+	if [ -f $(PKG_BUILD_DIR)/build/wdctlx ]; then \
+		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/; \
 	fi
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
