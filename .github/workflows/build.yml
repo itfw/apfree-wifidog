@@ -53,6 +53,14 @@ jobs:
             ls -la feeds/
             exit 1
           fi
+
+          ./scripts/feeds install -a libevent2-full
+          # 或者安装 libevent2-openssl
+          ./scripts/feeds install -a libevent2-openssl
+          # 确保 openssl 也安装了
+          ./scripts/feeds install -a openssl-util
+          ./scripts/feeds install -a libopenssl
+          
           ./scripts/feeds update packages base
           ./scripts/feeds install -f libubox
           ./scripts/feeds install -f libuci
