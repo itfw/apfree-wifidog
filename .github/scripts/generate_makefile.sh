@@ -17,7 +17,7 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile ---
+# --- 生成 Makefile（修复版）---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
@@ -35,7 +35,7 @@ define Package/apfree-wifidog
   CATEGORY:=Network
   SUBMENU:=Captive Portals
   TITLE:=A free wifidog implementation
-  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat +cmake
+  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat
 endef
 
 define Package/apfree-wifidog/description
@@ -47,53 +47,11 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	mkdir -p $(PKG_BUILD_DIR)/build && \
-	cd $(PKG_BUILD_DIR)/build && \
-	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig" && \
-	if cmake .. \
-		-DCMAKE_SYSTEM_NAME=Linux \
-		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
-		-DCMAKE_C_COMPILER=$(TARGET_CC) \
-		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \
-		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
-		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr; then \
-		echo "CMake configuration succeeded with PKG_CONFIG_PATH." && \
-		make -j$(NUM_JOBS); \
-	else \
-		echo "CMake configuration failed with PKG_CONFIG_PATH. Attempting fallback method..." && \
-		UCI_HEADER_PATH=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname) && \
-		if [ -n "$$UCI_HEADER_PATH" ]; then \
-			echo "Found uci.h in: $$UCI_HEADER_PATH" && \
-			rm -rf * && \
-			if cmake .. \
-				-DCMAKE_SYSTEM_NAME=Linux \
-				-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
-				-DCMAKE_C_COMPILER=$(TARGET_CC) \
-				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_HEADER_PATH" \
-				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
-				-DCMAKE_INSTALL_PREFIX=/usr \
-				-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
-				-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-				-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-				-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-				-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \
-				-DUCI_INCLUDE_DIRS="$$UCI_HEADER_PATH"; then \
-				echo "CMake configuration succeeded with explicit UCI_INCLUDE_DIRS." && \
-				make -j$(NUM_JOBS); \
-			else \
-				echo "CMake configuration failed with explicit UCI_INCLUDE_DIRS. Build failed." >&2; \
-				exit 1; \
-			fi; \
-		else \
-			echo "ERROR: Could not find uci.h for fallback method." >&2; \
-			exit 1; \
-		fi; \
-	fi
+	$(call Build/Compile/Default)
+endef
+
+define Build/Configure
+	# 让 OpenWrt 调用我们的编译脚本
 endef
 
 define Package/apfree-wifidog/install
@@ -106,6 +64,79 @@ endef
 
 $(eval $(call BuildPackage,apfree-wifidog))
 EOF
+
+# --- 创建编译脚本 ---
+COMPILE_SCRIPT="$SDK_PATH/package/apfree-wifidog/compile.sh"
+cat > "$COMPILE_SCRIPT" << 'EOF'
+#!/bin/bash
+set -e
+
+cd $(dirname "$0")/src
+echo "Building in: $(pwd)"
+
+# 创建构建目录
+mkdir -p build
+cd build
+
+# 设置环境变量
+export STAGING_DIR="$STAGING_DIR"
+export PKG_CONFIG_PATH="$STAGING_DIR/usr/lib/pkgconfig:$STAGING_DIR/host/lib/pkgconfig"
+
+echo "=== 环境信息 ==="
+echo "TARGET_CC: $TARGET_CC"
+echo "TARGET_CFLAGS: $TARGET_CFLAGS"
+echo "STAGING_DIR: $STAGING_DIR"
+echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+
+# 查找头文件
+UCI_INC=$(find "$STAGING_DIR" -name "uci.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+JSON_C_INC=$(find "$STAGING_DIR" -name "json.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+
+echo "UCI include dir: $UCI_INC"
+echo "JSON-C include dir: $JSON_C_INC"
+
+# 构建 CMake 参数
+CMAKE_ARGS=(
+  -DCMAKE_SYSTEM_NAME=Linux
+  -DCMAKE_SYSTEM_PROCESSOR=x86_64
+  -DCMAKE_C_COMPILER="$TARGET_CC"
+  -DCMAKE_CXX_COMPILER="$TARGET_CXX"
+  -DCMAKE_C_FLAGS="$TARGET_CFLAGS -I$STAGING_DIR/usr/include"
+  -DCMAKE_EXE_LINKER_FLAGS="$TARGET_LDFLAGS -L$STAGING_DIR/usr/lib"
+  -DCMAKE_INSTALL_PREFIX=/usr
+  -DCMAKE_FIND_ROOT_PATH="$STAGING_DIR"
+  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+)
+
+# 添加头文件路径
+if [ -n "$UCI_INC" ]; then
+  CMAKE_ARGS+=(-DUCI_INCLUDE_DIRS="$UCI_INC")
+fi
+
+if [ -n "$JSON_C_INC" ]; then
+  CMAKE_ARGS+=(-DJSON-C_INCLUDE_DIR="$JSON_C_INC")
+fi
+
+echo "=== 运行 CMake ==="
+cmake .. "${CMAKE_ARGS[@]}"
+
+echo "=== 开始编译 ==="
+make -j$(nproc)
+
+echo "=== 编译完成 ==="
+ls -lh wifidogx wdctlx 2>/dev/null || true
+EOF
+
+chmod +x "$COMPILE_SCRIPT"
+
+# 修改 Makefile 使用编译脚本
+echo '
+define Build/Compile
+	cd $(PKG_BUILD_DIR) && sh $(CURDIR)/compile.sh
+endef
+' >> "$MAKEFILE_PATH"
 
 # --- 生成 Init Script ---
 cat > "$INIT_PATH" << 'EOF'
