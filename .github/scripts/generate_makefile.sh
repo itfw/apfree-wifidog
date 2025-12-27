@@ -1,7 +1,6 @@
 #!/bin/bash
-set -e # 遇到错误立即退出
+set -e
 
-# 检查必要的参数
 if [ -z "$1" ] || [ -z "$2" ]; then
     echo "Usage: $0 <path_to_sdk> <path_to_apfree_wifidog_src>"
     exit 1
@@ -48,52 +47,52 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	mkdir -p $(PKG_BUILD_DIR)/build && \\
-	cd $(PKG_BUILD_DIR)/build && \\
-	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig" && \\
-	if cmake .. \\\\
-		-DCMAKE_SYSTEM_NAME=Linux \\\\
-		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \\\\
-		-DCMAKE_C_COMPILER=$(TARGET_CC) \\\\
-		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \\\\
-		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \\\\
-		-DCMAKE_INSTALL_PREFIX=/usr \\\\
-		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \\\\
-		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\\\
-		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\\
-		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\\
-		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr; then \\\\
-		echo "CMake configuration succeeded with PKG_CONFIG_PATH." && \\
-		make -j$(NUM_JOBS); \\
-	else \\
-		echo "CMake configuration failed with PKG_CONFIG_PATH. Attempting fallback method..." && \\
-		UCI_HEADER_PATH=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname) && \\
-		if [ -n "$$UCI_HEADER_PATH" ]; then \\
-			echo "Found uci.h in: $$UCI_HEADER_PATH" && \\
-			rm -rf * && \\
-			if cmake .. \\\\
-				-DCMAKE_SYSTEM_NAME=Linux \\\\
-				-DCMAKE_SYSTEM_PROCESSOR=x86_64 \\\\
-				-DCMAKE_C_COMPILER=$(TARGET_CC) \\\\
-				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_HEADER_PATH" \\\\
-				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \\\\
-				-DCMAKE_INSTALL_PREFIX=/usr \\\\
-				-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \\\\
-				-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\\\
-				-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\\
-				-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\\
-				-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \\\\
-				-DUCI_INCLUDE_DIRS="$$UCI_HEADER_PATH"; then \\\\
-				echo "CMake configuration succeeded with explicit UCI_INCLUDE_DIRS." && \\
-				make -j$(NUM_JOBS); \\
-			else \\
-				echo "CMake configuration failed with explicit UCI_INCLUDE_DIRS. Build failed." >&2 && \\
-				exit 1; \\
-			fi; \\
-		else \\
-			echo "ERROR: Could not find uci.h for fallback method." >&2 && \\
-			exit 1; \\
-		fi; \\
+	mkdir -p $(PKG_BUILD_DIR)/build && \
+	cd $(PKG_BUILD_DIR)/build && \
+	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig" && \
+	if cmake .. \
+		-DCMAKE_SYSTEM_NAME=Linux \
+		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+		-DCMAKE_C_COMPILER=$(TARGET_CC) \
+		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
+		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr; then \
+		echo "CMake configuration succeeded with PKG_CONFIG_PATH." && \
+		make -j$(NUM_JOBS); \
+	else \
+		echo "CMake configuration failed with PKG_CONFIG_PATH. Attempting fallback method..." && \
+		UCI_HEADER_PATH=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname) && \
+		if [ -n "$$UCI_HEADER_PATH" ]; then \
+			echo "Found uci.h in: $$UCI_HEADER_PATH" && \
+			rm -rf * && \
+			if cmake .. \
+				-DCMAKE_SYSTEM_NAME=Linux \
+				-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+				-DCMAKE_C_COMPILER=$(TARGET_CC) \
+				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_HEADER_PATH" \
+				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
+				-DCMAKE_INSTALL_PREFIX=/usr \
+				-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
+				-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+				-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+				-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+				-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \
+				-DUCI_INCLUDE_DIRS="$$UCI_HEADER_PATH"; then \
+				echo "CMake configuration succeeded with explicit UCI_INCLUDE_DIRS." && \
+				make -j$(NUM_JOBS); \
+			else \
+				echo "CMake configuration failed with explicit UCI_INCLUDE_DIRS. Build failed." >&2; \
+				exit 1; \
+			fi; \
+		else \
+			echo "ERROR: Could not find uci.h for fallback method." >&2; \
+			exit 1; \
+		fi; \
 	fi
 endef
 
