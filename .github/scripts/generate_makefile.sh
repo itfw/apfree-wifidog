@@ -42,8 +42,9 @@ define Package/apfree-wifidog/description
   apfree_wifidog is a free implementation of the wifidog captive portal.
 endef
 
+# --- 修正 Build/Prepare ---
 define Build/Prepare
-	$(CP) ./src/. $(PKG_BUILD_DIR)/
+	$(CP) ./src/* $(PKG_BUILD_DIR)/ # 复制 src/ 下的所有内容到 PKG_BUILD_DIR 的顶层
 endef
 
 define Build/Compile
