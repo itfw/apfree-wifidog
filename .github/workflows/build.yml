@@ -25,26 +25,29 @@ jobs:
         run: |
           SDK_URL="https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           wget -q "$SDK_URL" -O sdk.tar.zst
-          # 解压 .tar.zst 文件，需要安装 zstd
           sudo apt-get update
           sudo apt-get install -y zstd
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      # --- 新增步骤：准备 libubox 和 libuci 包 ---
-      - name: Prepare libubox package
+      # --- 更新：安装所有必要的依赖包 ---
+      - name: Update feeds and install dependencies
+        working-directory: ./sdk
         run: |
-          cd sdk
-          # 使用 OpenWrt packages feed 中的 libubox
           ./scripts/feeds update packages
-          ./scripts/feeds install -a -p packages libubox
-
-      - name: Prepare libuci package
-        run: |
-          cd sdk
-          # 使用 OpenWrt packages feed 中的 libuci
-          ./scripts/feeds update packages
-          ./scripts/feeds install -a -p packages libuci
+          ./scripts/feeds update base
+          # 安装 apfree-wifidog 所需的库
+          ./scripts/feeds install libubox
+          ./scripts/feeds install libuci
+          ./scripts/feeds install libjson-c
+          ./scripts/feeds install libevent2
+          ./scripts/feeds install libnftnl
+          ./scripts/feeds install libmnl
+          ./scripts/feeds install libnetfilter-queue
+          ./scripts/feeds install libmosquitto
+          ./scripts/feeds install libopenssl
+          ./scripts/feeds install libcurl
+          ./scripts/feeds install libbpf # 可能需要，如果 eBPF 功能被启用
 
       - name: Checkout your forked apfree-wifidog source
         uses: actions/checkout@v4
@@ -76,7 +79,7 @@ jobs:
             '  CATEGORY:=Network' \
             '  SUBMENU:=Captive Portals' \
             '  TITLE:=A free wifidog implementation' \
-            '  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +iptables +kmod-ipt-nat +cmake' \
+            '  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat +cmake' \
             'endef' \
             '' \
             'define Package/apfree-wifidog/description' \
@@ -107,7 +110,8 @@ jobs:
             '' \
             'define Package/apfree-wifidog/install' \
             '	$(INSTALL_DIR) $(1)/usr/bin' \
-            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidog $(1)/usr/bin/' \
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/' \ # <--- 注意：编译出的是 wifidogx
+            '	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/' \   # <--- 以及 wdctlx
             '	$(INSTALL_DIR) $(1)/etc/init.d' \
             '	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog' \
             'endef' \
@@ -115,7 +119,7 @@ jobs:
             '$(eval $(call BuildPackage,apfree-wifidog))' \
             > sdk/package/apfree-wifidog/Makefile
 
-          # Write init script
+          # Write init script (可能需要调整启动命令为 wifidogx)
           printf '%s\n' \
             '#!/bin/sh /etc/rc.common' \
             '' \
@@ -124,13 +128,13 @@ jobs:
             '' \
             'start_service() {' \
             '    procd_open_instance' \
-            '    procd_set_param command /usr/bin/wifidog' \
+            '    procd_set_param command /usr/bin/wifidogx' \ # <--- 启动 wifidogx
             '    procd_set_param respawn' \
             '    procd_close_instance' \
             '}' \
             '' \
             'stop_service() {' \
-            '    killall wifidog 2>/dev/null' \
+            '    killall wifidogx 2>/dev/null' \ # <--- 杀死 wifidogx
             '}' \
             > sdk/package/apfree-wifidog/files/wifidog.init
 
