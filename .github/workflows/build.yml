@@ -30,7 +30,7 @@ jobs:
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      # --- 新增步骤：缓存 feeds ---
+      # --- 缓存 feeds ---
       - name: Cache OpenWrt Feeds
         id: cache-feeds
         uses: actions/cache@v4
@@ -44,44 +44,20 @@ jobs:
         working-directory: ./sdk
         if: steps.cache-feeds.outputs.cache-hit != 'true'
         run: |
-          # 使用 OpenWrt 官方仓库地址更新（如果缓存未命中，则尝试更新）
-          # 但更推荐使用镜像或 SDK 自带的 feeds，如果 SDK 已经足够
-          # 这里我们先尝试更新，如果失败，构建步骤会依赖 SDK 自带的
-          # ./scripts/feeds update -a # 不推荐，可能导致网络问题
-          # 更安全的做法是只更新必要的 feeds，并且有备用方案
-          # 但 SDK 通常自带 base feeds 的必要部分，我们直接安装依赖包
-          # 如果必须更新，可以尝试使用镜像
-          # git clone --depth 1 https://github.com/openwrt/packages.git feeds/packages
-          # git clone --depth 1 https://github.com/openwrt/openwrt.git -b openwrt-24.10 --single-branch --filter=blob:none --sparse feeds/base
-          # echo "src-link packages feeds/packages" > feeds.conf
-          # echo "src-link base feeds/base" >> feeds.conf
-          # 这种方式太复杂，不如直接用 SDK 自带的或缓存的
-
-          # 最稳妥：只更新 packages (如果缓存未命中，尝试更新)
-          # ./scripts/feeds update packages # 可能仍然失败
-          # 或者，直接假设 feeds 已经存在（来自缓存或 SDK）并安装
-
-          # 如果缓存未命中，我们先创建 feeds 目录结构以防万一
           mkdir -p feeds/packages feeds/base
 
-      # --- 更新：安装依赖包，不依赖网络更新 ---
+      # --- 修正：安装依赖包 ---
       - name: Install dependencies from feeds
         working-directory: ./sdk
         run: |
-          # 1. 检查 feeds 目录是否存在
           if [ ! -d "feeds/packages" ] || [ ! -d "feeds/base" ]; then
             echo "Error: feeds/packages or feeds/base directory not found. Cannot proceed."
             echo "Available feeds directories:"
             ls -la feeds/
             exit 1
           fi
-
-          # 2. 更新 feeds index (使用本地目录)
           ./scripts/feeds update packages base
-
-          # 3. 安装 apfree-wifidog 所需的库
-          # 顺序很重要，可能有依赖关系
-          ./scripts/feeds install -f libubox # -f 强制安装，如果依赖未满足
+          ./scripts/feeds install -f libubox
           ./scripts/feeds install -f libuci
           ./scripts/feeds install -f libjson-c
           ./scripts/feeds install -f libevent2
@@ -144,6 +120,7 @@ jobs:
             '		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\' \
             '		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\' \
             '		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\' \
+            '		-DCMAKE_PREFIX_PATH=$(STAGING_DIR)/usr \\' \ # <--- 新增：显式设置 CMAKE_PREFIX_PATH
             '		&& \' \
             '	make -j$(NUM_JOBS)' \
             'endef' \
