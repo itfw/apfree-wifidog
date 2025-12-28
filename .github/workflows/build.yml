@@ -72,7 +72,9 @@ jobs:
         run: |
           rm -rf sdk/package/apfree-wifidog
           mkdir -p sdk/package/apfree-wifidog/files
-          cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
+          mkdir -p sdk/package/apfree-wifidog/src
+          cp -r apfree-wifidog-src/. sdk/package/apfree-wifidog/src/
+          #cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
           chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
           sh ./apfree-wifidog-src/.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
 
