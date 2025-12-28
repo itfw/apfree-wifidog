@@ -81,7 +81,6 @@ jobs:
       - name: Build apfree-wifidog IPK
         working-directory: ./sdk
         run: |
-          sed -i 's/CONFIG_PACKAGE_apfree-wifidog=y/# CONFIG_PACKAGE_apfree-wifidog is not set/' .config 2>/dev/null || true
           make defconfig
           make package/apfree-wifidog/compile V=s
           
