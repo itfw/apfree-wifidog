@@ -17,7 +17,7 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile（带简单错误处理）---
+# --- 生成 Makefile（优化版本，解决大文件问题）---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
@@ -47,21 +47,27 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	mkdir -p $(PKG_BUILD_DIR)/build; \
-	cd $(PKG_BUILD_DIR)/build; \
-	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig"; \
-	echo "=== Starting CMake ==="; \
+	# 创建构建目录
+	mkdir -p $(PKG_BUILD_DIR)/build
+	cd $(PKG_BUILD_DIR)/build
+	
+	# 设置环境变量
+	export PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig:$(STAGING_DIR)/host/lib/pkgconfig"
+	
+	# 配置CMake（启用优化，禁用调试）
 	cmake .. \
 		-DCMAKE_SYSTEM_NAME=Linux \
 		-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
 		-DCMAKE_C_COMPILER=$(TARGET_CC) \
-		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include" \
-		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
+		-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$(STAGING_DIR)/usr/include -Os -DNDEBUG -ffunction-sections -fdata-sections" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib -Wl,--gc-sections" \
 		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
 		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
 		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
 		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY || { \
+		# 如果失败，尝试备用配置
 		echo "=== CMake failed, trying fallback ==="; \
 		UCI_INC=$$(find $(STAGING_DIR) -name "uci.h" -type f -print -quit | xargs dirname); \
 		if [ -n "$$UCI_INC" ]; then \
@@ -70,9 +76,10 @@ define Build/Compile
 				-DCMAKE_SYSTEM_NAME=Linux \
 				-DCMAKE_SYSTEM_PROCESSOR=x86_64 \
 				-DCMAKE_C_COMPILER=$(TARGET_CC) \
-				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_INC" \
-				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib" \
+				-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) -I$$UCI_INC -Os -DNDEBUG -ffunction-sections -fdata-sections" \
+				-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS) -L$(STAGING_DIR)/usr/lib -Wl,--gc-sections" \
 				-DCMAKE_INSTALL_PREFIX=/usr \
+				-DCMAKE_BUILD_TYPE=Release \
 				-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
 				-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
 				-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
@@ -82,38 +89,67 @@ define Build/Compile
 			echo "ERROR: Could not find uci.h"; \
 			exit 1; \
 		fi; \
-	}; \
-	echo "=== Starting make ==="; \
+	}
+	
+	# 编译
 	make -j$(NUM_JOBS) || make
-	# --- 构建成功后，列出 PKG_BUILD_DIR 目录内容 ---
-	echo "=== Contents of PKG_BUILD_DIR after build ==="; \
-	ls -la $(PKG_BUILD_DIR)/build/src/
+	
+	# 剥离调试符号
+	if [ -f $(PKG_BUILD_DIR)/build/src/wifidogx ]; then \
+		$(TARGET_CROSS)strip --strip-debug --strip-unneeded $(PKG_BUILD_DIR)/build/src/wifidogx; \
+		ls -la $(PKG_BUILD_DIR)/build/src/wifidogx; \
+	fi
+	if [ -f $(PKG_BUILD_DIR)/build/src/wdctlx ]; then \
+		$(TARGET_CROSS)strip --strip-debug --strip-unneeded $(PKG_BUILD_DIR)/build/src/wdctlx; \
+		ls -la $(PKG_BUILD_DIR)/build/src/wdctlx; \
+	fi
+	if [ -f $(PKG_BUILD_DIR)/build/wifidogx ]; then \
+		$(TARGET_CROSS)strip --strip-debug --strip-unneeded $(PKG_BUILD_DIR)/build/wifidogx; \
+		ls -la $(PKG_BUILD_DIR)/build/wifidogx; \
+	fi
+	if [ -f $(PKG_BUILD_DIR)/build/wdctlx ]; then \
+		$(TARGET_CROSS)strip --strip-debug --strip-unneeded $(PKG_BUILD_DIR)/build/wdctlx; \
+		ls -la $(PKG_BUILD_DIR)/build/wdctlx; \
+	fi
 endef
 
 define Package/apfree-wifidog/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	# 检查并安装 wifidogx (在 build/src/ 目录下)
+	
+	# 只安装剥离后的二进制文件，不包含构建目录
 	if [ -f $(PKG_BUILD_DIR)/build/src/wifidogx ]; then \
 		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/src/wifidogx $(1)/usr/bin/; \
 	elif [ -f $(PKG_BUILD_DIR)/build/wifidogx ]; then \
 		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wifidogx $(1)/usr/bin/; \
 	else \
-		echo "ERROR: wifidogx not found in build/src/ or build/ directory!"; \
+		echo "ERROR: wifidogx not found in expected locations!"; \
 		find $(PKG_BUILD_DIR) -name "*wifidog*" -type f; \
 		exit 1; \
 	fi
-	# 检查并安装 wdctlx (在 build/src/ 目录下)
+	
 	if [ -f $(PKG_BUILD_DIR)/build/src/wdctlx ]; then \
 		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/src/wdctlx $(1)/usr/bin/; \
 	elif [ -f $(PKG_BUILD_DIR)/build/wdctlx ]; then \
 		$(INSTALL_BIN) $(PKG_BUILD_DIR)/build/wdctlx $(1)/usr/bin/; \
 	else \
-		echo "ERROR: wdctlx not found in build/src/ or build/ directory!"; \
+		echo "ERROR: wdctlx not found in expected locations!"; \
 		find $(PKG_BUILD_DIR) -name "*wdctl*" -type f; \
 		exit 1; \
 	fi
+	
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
+endef
+
+# 确保不安装开发文件
+define Build/InstallDev
+endef
+
+# 清理构建目录中的大文件
+define Package/apfree-wifidog/postinst
+#!/bin/sh
+# 配置脚本
+echo "apfree-wifidog installed successfully"
 endef
 
 $(eval $(call BuildPackage,apfree-wifidog))
