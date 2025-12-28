@@ -34,6 +34,8 @@ jobs:
           
           # 安装所有必要的依赖定义
           ./scripts/feeds install -a
+          ./scripts/feeds update luci
+          ./scripts/feeds install -a -p luci
 
       - name: Prepare Local Package
         run: |
@@ -53,15 +55,10 @@ jobs:
           echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-apfree-wifidog=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y" >> .config
-          
-          # 2. 生成完整配置，这会自动选中 libuci 等依赖
+          ./scripts/feeds install -a
+
           make defconfig
-          
-          # 3. 重要：利用 SDK 的自动依赖处理
-          # 这步会发现 apfree-wifidog 依赖 libuci，从而自动编译 libuci 并放入 staging_dir
           make package/apfree-wifidog/prepare V=s
-          
-          # 4. 编译（不需要手动执行 package/libuci/compile）
           make package/apfree-wifidog/compile V=s -j$(nproc)
           make package/luci-app-apfree-wifidog/compile V=s -j$(nproc)
 
