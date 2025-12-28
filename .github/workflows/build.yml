@@ -64,6 +64,8 @@ jobs:
           
           make defconfig
 
+          make package/apfree-wifidog/prepare V=s
+
           make package/apfree-wifidog/compile V=s -j$(nproc)
           make package/luci-app-apfree-wifidog/compile V=s -j$(nproc)
 
