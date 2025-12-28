@@ -1,4 +1,4 @@
-name: Build apfree-wifidog IPK (Full)
+name: Build apfree-wifidog IPK for OpenWrt x86_64
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Checkout Source
+      - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
           path: apfree-wifidog-src
@@ -25,45 +25,53 @@ jobs:
       - name: Update and Install Feeds
         working-directory: ./sdk
         run: |
-          # 显式添加 luci 源并更新
+          # 显式加入所有源
+          echo "src-git base https://github.com/openwrt/openwrt.git;openwrt-24.10" > feeds.conf
+          echo "src-git packages https://github.com/openwrt/packages.git;openwrt-24.10" >> feeds.conf
           echo "src-git luci https://github.com/openwrt/luci.git;openwrt-24.10" >> feeds.conf
-          ./scripts/feeds update -a
           
-          # 必须先 uninstall 官方的，否则会冲突
+          ./scripts/feeds update -a
           ./scripts/feeds uninstall apfree-wifidog || true
           
-          # 安装所有必要的依赖定义
+          # 安装全部
           ./scripts/feeds install -a
-          ./scripts/feeds update luci
-          ./scripts/feeds install -a -p luci
 
       - name: Prepare Local Package
         run: |
-          # 确保后端源码被正确放置
           rm -rf sdk/package/apfree-wifidog
           mkdir -p sdk/package/apfree-wifidog/src
           cp -r apfree-wifidog-src/. sdk/package/apfree-wifidog/src/
-          
-          # 运行你的 Makefile 生成脚本
           chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
           ./apfree-wifidog-src/.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
 
       - name: Compile IPK
         working-directory: ./sdk
         run: |
-          # 1. 注入配置
           echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-apfree-wifidog=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y" >> .config
-          ./scripts/feeds install -a
-
           make defconfig
-          make package/apfree-wifidog/prepare V=s
+
+          # 【核心修复：手动安装依赖到开发环境】
+          # 在 SDK 环境下，必须先执行 install 才能让 CMake 看到 libuci 和 libubox
+          make package/libubox/install V=s -j$(nproc)
+          make package/libuci/install V=s -j$(nproc)
+          make package/libevent2/install V=s -j$(nproc)
+          make package/libopenssl/install V=s -j$(nproc)
+          
+          # 检查头文件是否真的到位了 (用于日志查错)
+          find staging_dir/target-x86_64_musl/usr/include -name uci.h
+
+          # 编译主程序
           make package/apfree-wifidog/compile V=s -j$(nproc)
+          # 编译插件
           make package/luci-app-apfree-wifidog/compile V=s -j$(nproc)
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-x86_64
-          path: sdk/bin/packages/x86_64/**/*.ipk
+          name: apfree-wifidog-full-packages
+          path: |
+            sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
+            sdk/bin/packages/x86_64/luci/luci-app-apfree-wifidog*.ipk
+            sdk/bin/packages/x86_64/luci/luci-i18n-apfree-wifidog-zh-cn*.ipk
