@@ -37,7 +37,13 @@ jobs:
             exit 1
           fi
 
+          rm -rf feeds/packages/net/apfree-wifidog 2>/dev/null || true
+          
+          # 更新 feeds
           ./scripts/feeds update packages base
+          
+          # 再次确认删除（有些 feeds 会在更新时重新创建）
+          rm -rf feeds/packages/net/apfree-wifidog 2>/dev/null || true
           ./scripts/feeds install -a libevent2-full
           ./scripts/feeds install -a libevent2-openssl
           ./scripts/feeds install -a openssl-util
@@ -82,7 +88,8 @@ jobs:
         working-directory: ./sdk
         run: |
           make defconfig
-          make package/apfree-wifidog/compile V=s
+          #make package/apfree-wifidog/compile V=s
+          make package/apfree-wifidog-local/compile V=s
           
 
       - name: Find built IPK
