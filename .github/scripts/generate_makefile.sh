@@ -17,17 +17,9 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile（强制使用本地源码）---
+# --- 生成 Makefile---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
-
-# --- 强制覆盖可能由 package.mk 推断的源码相关变量 ---
-override PKG_SOURCE_URL:=
-override PKG_SOURCE:=
-override PKG_SOURCE_VERSION:=
-override PKG_SOURCE_PROTO:=
-override PKG_MD5SUM:=
-# --- End of override ---
 
 PKG_NAME:=apfree-wifidog
 PKG_VERSION:=8.11.0
@@ -51,7 +43,6 @@ define Package/apfree-wifidog/description
 endef
 
 define Build/Prepare
-	# 强制清空并复制本地源码
 	rm -rf $(PKG_BUILD_DIR)/.[^.]* $(PKG_BUILD_DIR)/*
 	$(CP) ./src/. $(PKG_BUILD_DIR)/
 endef
