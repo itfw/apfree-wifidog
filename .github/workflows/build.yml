@@ -31,7 +31,9 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds uninstall apfree-wifidog || true
           rm -rf feeds/packages/net/apfree-wifidog
-          
+
+          # 3. 安装 LuCI 相关的包定义
+          ./scripts/feeds install -p luci luci-app-apfree-wifidog
           # 安装必要的编译依赖
           ./scripts/feeds install libevent2 libuci libubox libjson-c libnftnl libmnl \
                                   libnetfilter-queue libmosquitto libopenssl libcurl libbpf
@@ -49,13 +51,18 @@ jobs:
         working-directory: ./sdk
         run: |
           echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-apfree-wifidog=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y" >> .config
           make defconfig
-          sed -i 's/CONFIG_PACKAGE_apfree-wifidog=m/CONFIG_PACKAGE_apfree-wifidog=y/g' .config
+          grep "apfree-wifidog" .config
+          #sed -i 's/CONFIG_PACKAGE_apfree-wifidog=m/CONFIG_PACKAGE_apfree-wifidog=y/g' .config
           make package/apfree-wifidog/compile V=s -j$(nproc)
+          make package/feeds/luci/luci-app-apfree-wifidog/compile V=s -j$(nproc)
 
       - name: Find built IPK
         run: |
           find . -name "apfree-wifidog*.ipk" -type f
+          find . -name "*apfree-wifidog*.ipk" -type f
           echo "Looking for IPK files..."
           find . -name "apfree-wifidog_*.ipk" -type f
           echo "Listing all .ipk files in bin/packages/x86_64/"
@@ -65,4 +72,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apfree-wifidog-x86_64
-          path: sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
+          #path: sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
+          path: |
+            sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
+            sdk/bin/packages/x86_64/luci/luci-app-apfree-wifidog*.ipk
+            sdk/bin/packages/x86_64/luci/luci-i18n-apfree-wifidog-zh-cn*.ipk
+          if-no-files-found: error
