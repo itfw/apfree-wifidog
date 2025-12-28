@@ -70,6 +70,7 @@ jobs:
 
       - name: Copy source and prepare package in SDK
         run: |
+          rm -rf sdk/package/apfree-wifidog
           mkdir -p sdk/package/apfree-wifidog/files
           cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
           chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
@@ -83,7 +84,7 @@ jobs:
 
       - name: Find built IPK
         run: |
-          find . -name "apfree-wifidog_*.ipk" -type f
+          find . -name "apfree-wifidog*.ipk" -type f
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
