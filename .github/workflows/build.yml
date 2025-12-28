@@ -64,8 +64,10 @@ jobs:
           
           make defconfig
 
+          make package/libubox/compile V=s -j$(nproc)
+          make package/libuci/compile V=s -j$(nproc)
+          make package/libevent2/compile V=s -j$(nproc)
           make package/apfree-wifidog/prepare V=s
-
           make package/apfree-wifidog/compile V=s -j$(nproc)
           make package/luci-app-apfree-wifidog/compile V=s -j$(nproc)
 
