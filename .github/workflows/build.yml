@@ -12,14 +12,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Cache OpenWrt SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: |
-            sdk/
-          key: openwrt-sdk-24.10.5-x86_64
-
       - name: Download OpenWrt SDK for x86_64 (24.10.5) from mirror
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
@@ -30,16 +22,9 @@ jobs:
           tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Cache OpenWrt Feeds
-        id: cache-feeds
-        uses: actions/cache@v4
-        with:
-          path: |
-            sdk/feeds/
-          key: openwrt-feeds-24.10.5
+
       - name: Update feeds (if cache missed)
         working-directory: ./sdk
-        if: steps.cache-feeds.outputs.cache-hit != 'true'
         run: |
           mkdir -p feeds/packages feeds/base
 
@@ -47,7 +32,6 @@ jobs:
         working-directory: ./sdk
         run: |
           if [ ! -d "feeds/packages" ] || [ ! -d "feeds/base" ]; then
-            echo "Error: feeds/packages or feeds/base directory not found. Cannot proceed."
             echo "Available feeds directories:"
             ls -la feeds/
             exit 1
@@ -88,7 +72,6 @@ jobs:
         run: |
           mkdir -p sdk/package/apfree-wifidog/files
           cp -r apfree-wifidog-src sdk/package/apfree-wifidog/src
-          # Copy the generation script into the runner's context if needed, or run it from its location
           chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
           sh ./apfree-wifidog-src/.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
 
