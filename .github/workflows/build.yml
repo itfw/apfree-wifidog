@@ -89,5 +89,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apfree-wifidog-x86_64
-          path: ./sdk/bin/packages/x86_64/*/*.ipk
+          path: ./sdk/bin/packages/x86_64/packages/apfree-wifidog*.ipk
           if-no-files-found: error
