@@ -38,6 +38,14 @@ define Package/apfree-wifidog
   DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libevent2-openssl +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf
 endef
 
+CMAKE_OPTIONS += \
+	-DCMAKE_INCLUDE_PATH="$(STAGING_DIR)/usr/include" \
+	-DCMAKE_LIBRARY_PATH="$(STAGING_DIR)/usr/lib"
+
+define Build/Prepare
+	mkdir -p $(PKG_BUILD_DIR)
+	$(CP) ./src/* $(PKG_BUILD_DIR)/
+endef
 # 重点：覆盖 Prepare 步骤，直接使用 SDK 内的 src 目录
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
