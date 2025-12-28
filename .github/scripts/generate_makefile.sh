@@ -17,7 +17,7 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile（显式阻止下载，使用唯一包名）---
+# --- 生成 Makefile（显式阻止下载）---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
@@ -29,7 +29,7 @@ PKG_SOURCE_PROTO:=local
 # PKG_SOURCE_URL:=
 
 # --- 定义包信息 ---
-PKG_NAME:=apfree-wifidog-local # <--- 使用唯一包名
+PKG_NAME:=apfree-wifidog # <--- 改回 apfree-wifidog
 # 确保这个版本号用于最终的 .ipk 文件名
 PKG_VERSION:=8.11.0
 PKG_RELEASE:=8
@@ -40,16 +40,16 @@ PKG_MAINTAINER:=GitHub Actions
 # --- 包含 OpenWrt 标准包定义 ---
 include $(INCLUDE_DIR)/package.mk
 
-define Package/apfree-wifidog-local # <--- 包名也要对应修改
+define Package/apfree-wifidog # <--- 包名也要改回
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Captive Portals
-  TITLE:=A free wifidog implementation (Local Build)
+  TITLE:=A free wifidog implementation
   DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libevent_openssl +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +iptables +kmod-ipt-nat
 endef
 
-define Package/apfree-wifidog-local/description # <--- 包名也要对应修改
-  apfree_wifidog is a free implementation of the wifidog captive portal (Local Build).
+define Package/apfree-wifidog/description # <--- 包名也要改回
+  apfree_wifidog is a free implementation of the wifidog captive portal.
 endef
 
 # --- 准备构建目录 ---
@@ -129,7 +129,7 @@ define Build/Compile
 endef
 
 # --- 安装步骤 ---
-define Package/apfree-wifidog-local/install
+define Package/apfree-wifidog/install # <--- 包名也要改回
 	$(INSTALL_DIR) $(1)/usr/bin
 	
 	# 只安装剥离后的二进制文件，不包含构建目录
@@ -162,13 +162,13 @@ define Build/InstallDev
 endef
 
 # 清理构建目录中的大文件
-define Package/apfree-wifidog-local/postinst # <--- 包名也要对应修改
+define Package/apfree-wifidog/postinst # <--- 包名也要改回
 #!/bin/sh
 # 配置脚本
-echo "apfree-wifidog-local installed successfully"
+echo "apfree-wifidog installed successfully"
 endef
 
-$(eval $(call BuildPackage,apfree-wifidog-local)) # <--- 包名也要对应修改
+$(eval $(call BuildPackage,apfree-wifidog)) # <--- 包名也要改回
 EOF
 
 # --- 生成 Init Script ---
