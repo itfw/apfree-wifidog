@@ -81,12 +81,17 @@ jobs:
       - name: Build apfree-wifidog IPK
         working-directory: ./sdk
         run: |
-          make defconfig
+          #make defconfig
           make package/apfree-wifidog/compile V=s
+          
 
       - name: Find built IPK
         run: |
           find . -name "apfree-wifidog*.ipk" -type f
+          echo "Looking for IPK files..."
+          find . -name "apfree-wifidog_*.ipk" -type f
+          echo "Listing all .ipk files in bin/packages/x86_64/"
+          find ./sdk/bin/packages/x86_64/ -name "*.ipk" -type f -ls
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
