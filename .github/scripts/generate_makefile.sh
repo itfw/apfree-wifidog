@@ -17,17 +17,27 @@ INIT_PATH="$SDK_PATH/package/apfree-wifidog/files/wifidog.init"
 mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$(dirname "$INIT_PATH")"
 
-# --- 生成 Makefile---
+# --- 生成 Makefile（显式阻止下载）---
 cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
+# --- 显式定义源码相关变量，阻止下载 ---
+# 设置一个非标准的协议，让 package.mk 无法处理，从而跳过下载
+PKG_SOURCE_PROTO:=local
+# 或者显式设置为空
+# PKG_SOURCE:=
+# PKG_SOURCE_URL:=
+
+# --- 定义包信息 ---
 PKG_NAME:=apfree-wifidog
+# 确保这个版本号用于最终的 .ipk 文件名
 PKG_VERSION:=8.11.0
 PKG_RELEASE:=8
 
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=GitHub Actions
 
+# --- 包含 OpenWrt 标准包定义 ---
 include $(INCLUDE_DIR)/package.mk
 
 define Package/apfree-wifidog
@@ -42,11 +52,15 @@ define Package/apfree-wifidog/description
   apfree_wifidog is a free implementation of the wifidog captive portal.
 endef
 
+# --- 准备构建目录 ---
 define Build/Prepare
+	# 清空构建目录，确保只使用本地源码
 	rm -rf $(PKG_BUILD_DIR)/.[^.]* $(PKG_BUILD_DIR)/*
+	# 复制本地源码到构建目录
 	$(CP) ./src/. $(PKG_BUILD_DIR)/
 endef
 
+# --- 编译步骤 ---
 define Build/Compile
 	# 创建构建目录
 	mkdir -p $(PKG_BUILD_DIR)/build
@@ -114,6 +128,7 @@ define Build/Compile
 	fi
 endef
 
+# --- 安装步骤 ---
 define Package/apfree-wifidog/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	
