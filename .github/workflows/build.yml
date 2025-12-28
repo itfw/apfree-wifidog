@@ -67,6 +67,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: apfree-wifidog-src
+          ref: ${{ github.ref }}
+          
+      - name: 显示分支信息
+        run: |
+          echo "当前分支: ${{ github.ref }}"
+          echo "分支名: ${{ github.ref_name }}"
+          echo "SHA: ${{ github.sha }}"
 
       - name: Copy source and prepare package in SDK
         run: |
