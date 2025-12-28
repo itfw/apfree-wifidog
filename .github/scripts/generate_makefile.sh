@@ -15,10 +15,10 @@ cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=apfree-wifidog
-PKG_VERSION:=8.11.0
+PKG_VERSION:=8.11.2712
 PKG_RELEASE:=1
 
-# 重点：设置为 local 协议，禁止从网上下载
+
 PKG_SOURCE_PROTO:=local
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE_URL:=
@@ -53,8 +53,14 @@ define Package/apfree-wifidog/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wifidogx $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wdctlx $(1)/usr/bin/
+
+	$(INSTALL_DIR) $(1)/lib/bpf
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/bpf/*.o $(1)/lib/bpf/ 2>/dev/null || true
+	
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
+	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidogx
+
+	
 endef
 
 $(eval $(call BuildPackage,apfree-wifidog))
