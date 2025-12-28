@@ -40,7 +40,7 @@ jobs:
           # 安装
           ./scripts/feeds install -p luci luci-app-apfree-wifidog
           ./scripts/feeds install -p luci luci-i18n-apfree-wifidog-zh-cn
-          ./scripts/feeds install libevent2 libuci libubox libjson-c libnftnl libmnl \
+          ./scripts/feeds install libevent2 libuci libuci-dev libubox libjson-c libnftnl libmnl \
                                   libnetfilter-queue libmosquitto libopenssl libcurl libbpf
 
       - name: Prepare Local Package
