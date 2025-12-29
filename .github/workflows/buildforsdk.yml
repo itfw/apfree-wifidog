@@ -1,4 +1,4 @@
-name: Build apfree-wifidog with libmnl fix (OpenWrt 24.10.5, x86_64)
+name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Final
 
 on:
   workflow_dispatch:
@@ -60,20 +60,26 @@ jobs:
           sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" \
             package/feeds/packages/apfree-wifidog/Makefile
 
-      - name: Pre-compile critical dependencies (fix pkg-config issue)
+      # ✅ CRITICAL: Initialize .config BEFORE any compile
+      - name: Initialize and configure build
         working-directory: openwrt-sdk
         run: |
-          # Build libmnl first so libnetfilter-cthelper can find it
+          make defconfig
+          # Enable required packages
+          echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
+          echo "CONFIG_PACKAGE_libmnl=y" >> .config
+          echo "CONFIG_PACKAGE_libnftnl=y" >> .config
+          echo "CONFIG_PACKAGE_libnetfilter-queue=y" >> .config
+          # Optional: other deps if needed
+          make defconfig
+
+      # ✅ Now safe to compile dependencies
+      - name: Pre-compile critical dependencies
+        working-directory: openwrt-sdk
+        run: |
           make package/libmnl/compile
           make package/libnftnl/compile
           make package/libnetfilter-queue/compile
-
-      - name: Enable apfree-wifidog in config
-        working-directory: openwrt-sdk
-        run: |
-          make defconfig
-          echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
-          make defconfig
 
       - name: Compile apfree-wifidog
         working-directory: openwrt-sdk
