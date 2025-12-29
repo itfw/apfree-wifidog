@@ -3,17 +3,16 @@ set -e
 
 SDK_PATH="$1"
 APFREE_WIFIDOG_SRC="$2"
+MAKEFILE_PATH="$SDK_PATH/package/apfree-wifidog/Makefile"
 
-# 创建主程序的 Makefile
-MAIN_MAKEFILE_PATH="$SDK_PATH/package/apfree-wifidog/Makefile"
-mkdir -p "$(dirname "$MAIN_MAKEFILE_PATH")"
+mkdir -p "$(dirname "$MAKEFILE_PATH")"
 mkdir -p "$SDK_PATH/package/apfree-wifidog/files"
 
-cat > "$MAIN_MAKEFILE_PATH" << 'EOF'
+cat > "$MAKEFILE_PATH" << 'EOF'
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=apfree-wifidog
-PKG_VERSION:=8.11.0
+PKG_VERSION:=8.11.2712
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=local
@@ -27,15 +26,15 @@ define Package/apfree-wifidog
   CATEGORY:=Network
   SUBMENU:=Captive Portals
   TITLE:=Apfree Wifidog
-  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libevent2-openssl +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf +apfree-wifidog-ebpf
+  DEPENDS:=+libubox +libuci +libjson-c +libevent2 +libevent2-openssl +libnftnl +libmnl +libnetfilter-queue +libmosquitto +libopenssl +libcurl +libbpf
 endef
+
 
 CMAKE_OPTIONS += \
 	-DCMAKE_INCLUDE_PATH="$(STAGING_DIR)/usr/include" \
 	-DCMAKE_LIBRARY_PATH="$(STAGING_DIR)/usr/lib" \
 	-DUBUS_SUPPORT=ON \
-	-DBPF_SUPPORT=ON \
-	-DENABLE_XDPI_FEATURE=OFF
+	-DBPF_SUPPORT=ON
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
@@ -43,70 +42,527 @@ define Build/Prepare
 endef
 
 define Package/apfree-wifidog/install
-	$(INSTALL_DIR) $(1)/usr/bin $(1)/etc/init.d $(1)/etc/config
+	$(INSTALL_DIR) $(1)/usr/bin $(1)/lib/bpf $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wifidogx $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wdctlx $(1)/usr/bin/
-	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/bpf/*.o $(1)/lib/bpf/ 2>/dev/null || true
+	$(INSTALL_BIN) ./files/wifidogx.init $(1)/etc/init.d/wifidogx
 	$(CP) $(PKG_BUILD_DIR)/config/wifidog.conf $(1)/etc/config/wifidogx 2>/dev/null || true
 endef
 
 $(eval $(call BuildPackage,apfree-wifidog))
 EOF
 
-# 创建 eBPF 组件的 Makefile
-EBPF_MAKEFILE_PATH="$SDK_PATH/package/apfree-wifidog-ebpf/Makefile"
-mkdir -p "$(dirname "$EBPF_MAKEFILE_PATH")"
-
-cat > "$EBPF_MAKEFILE_PATH" << 'EOF'
-include $(TOPDIR)/rules.mk
-
-PKG_NAME:=apfree-wifidog-ebpf
-PKG_VERSION:=8.11.0
-PKG_RELEASE:=1
-
-PKG_SOURCE_PROTO:=local
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)
-
-include $(INCLUDE_DIR)/package.mk
-include $(INCLUDE_DIR)/cmake.mk
-
-define Package/apfree-wifidog-ebpf
-  SECTION:=net
-  CATEGORY:=Network
-  SUBMENU:=Captive Portals
-  TITLE:=Apfree Wifidog eBPF Components
-  DEPENDS:=+libbpf +libelf +libpthread +libjson-c +libuci
-endef
-
-CMAKE_OPTIONS += \
-	-DCMAKE_INCLUDE_PATH="$(STAGING_DIR)/usr/include" \
-	-DCMAKE_LIBRARY_PATH="$(STAGING_DIR)/usr/lib" \
-	-DENABLE_XDPI_FEATURE=ON
-
-define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-	$(CP) ./src/ebpf/* $(PKG_BUILD_DIR)/
-endef
-
-define Package/apfree-wifidog-ebpf/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/aw-bpfctl $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/event_daemon $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/dns-monitor $(1)/usr/bin/
-endef
-
-$(eval $(call BuildPackage,apfree-wifidog-ebpf))
-EOF
-
 # 生成默认的 init 脚本
-cat > "$SDK_PATH/package/apfree-wifidog/files/wifidog.init" << 'EOF'
+cat > "$SDK_PATH/package/apfree-wifidog/files/wifidogx.init" << 'EOF'
 #!/bin/sh /etc/rc.common
+# Copyright (C) 2018 Dengfeng Liu
+
 START=99
 USE_PROCD=1
+NAME=wifidogx
+PROG="/usr/bin/${NAME}"
+CONFIGFILE="/tmp/wifidogx.conf"
+
+unload_bpf_programs() {
+        local gateway_name="$1"
+        local iface
+
+        config_get gateway_name "$section" gateway_name
+        iface=$gateway_name
+        echo "unload_bpf_programs: $iface"
+
+        # Check if interface exists
+        [ -z "$iface" ] && return 1
+        [ ! -e "/sys/class/net/$iface" ] && return 1
+
+        # Clean up existing filters and qdisc for this interface
+        tc qdisc show dev "$iface" | grep -q clsact && {
+                tc filter del dev "$iface" ingress 2>/dev/null || true
+                tc filter del dev "$iface" egress 2>/dev/null || true
+                tc qdisc del dev "$iface" clsact 2>/dev/null || true
+        }
+
+        return 0
+}
+
+# Global cleanup function for all BPF programs and maps
+unload_global_bpf_resources() {
+        echo "Cleaning up global BPF resources..."
+
+        # Clean up DNS BPF programs loaded via bpftool
+        [ -e /sys/fs/bpf/tc/globals/dns_egress ] && rm -f /sys/fs/bpf/tc/globals/dns_egress
+
+        # Clean up aw-bpf maps (these are shared across all interfaces)
+        [ -e /sys/fs/bpf/tc/globals/ipv4_map ] && rm -f /sys/fs/bpf/tc/globals/ipv4_map
+        [ -e /sys/fs/bpf/tc/globals/ipv6_map ] && rm -f /sys/fs/bpf/tc/globals/ipv6_map
+        [ -e /sys/fs/bpf/tc/globals/mac_map ] && rm -f /sys/fs/bpf/tc/globals/mac_map
+        [ -e /sys/fs/bpf/tc/globals/tcp_conn_map ] && rm -f /sys/fs/bpf/tc/globals/tcp_conn_map
+        [ -e /sys/fs/bpf/tc/globals/udp_conn_map ] && rm -f /sys/fs/bpf/tc/globals/udp_conn_map
+        [ -e /sys/fs/bpf/tc/globals/xdpi_l7_map ] && rm -f /sys/fs/bpf/tc/globals/xdpi_l7_map
+        [ -e /sys/fs/bpf/tc/globals/session_events_map ] && rm -f /sys/fs/bpf/tc/globals/session_events_map
+        [ -e /sys/fs/bpf/tc/globals/prog_array_map ] && rm -f /sys/fs/bpf/tc/globals/prog_array_map
+
+        # Clean up dns-bpf maps
+        [ -e /sys/fs/bpf/tc/globals/dns_ringbuf ] && rm -f /sys/fs/bpf/tc/globals/dns_ringbuf
+        [ -e /sys/fs/bpf/tc/globals/dns_stats_map ] && rm -f /sys/fs/bpf/tc/globals/dns_stats_map
+
+        return 0
+}
+
+unload_xdpi() {
+        # check if xdpi-bpf module is loaded
+        if ! lsmod | grep -q xdpi; then
+                echo "xdpi module not loaded" >&2
+                return 0
+        fi
+
+        # Get module dependencies before unloading
+        echo "Module dependencies before unloading:" >&2
+        lsmod | grep xdpi >&2
+
+        # Try to unload dependent modules first
+        local dependent_modules
+        dependent_modules=$(lsmod | grep xdpi | awk '{print $4}' | tr ',' '\n' | grep -v '^$')
+        if [ -n "$dependent_modules" ]; then
+                echo "Attempting to unload dependent modules:" >&2
+                for module in $dependent_modules; do
+                        echo "Unloading dependent module: $module" >&2
+                        rmmod "$module" 2>/dev/null
+                done
+        fi
+
+        # Try to unload the module and capture any error messages
+        local rmmod_output
+        rmmod_output=$(rmmod xdpi-bpf 2>&1)
+        local rmmod_status=$?
+
+        if [ $rmmod_status -ne 0 ]; then
+                echo "Failed to unload xdpi module. Error: $rmmod_output" >&2
+                echo "Module state:" >&2
+                lsmod | grep xdpi >&2
+                echo "Kernel messages:" >&2
+                dmesg | tail -n 20 | grep -i xdpi >&2
+
+                # Show more detailed module information
+                echo "Detailed module information:" >&2
+                lsmod | grep xdpi >&2
+                echo "Module references:" >&2
+                cat /sys/module/xdpi_bpf/refcnt 2>/dev/null || echo "Cannot read refcnt" >&2
+                return 1
+        fi
+
+        # Verify module was actually unloaded
+        if lsmod | grep -q xdpi; then
+                echo "Module still loaded after rmmod attempt" >&2
+                return 1
+        fi
+
+        return 0
+}
+
+load_xdpi() {
+        # Load xdpi-bpf module if not loaded
+        if ! lsmod | grep -q xdpi; then
+                modprobe xdpi-bpf
+                if [ $? -ne 0 ]; then
+                        echo "Failed to load xdpi module" >&2
+                        return 1
+                fi
+        fi
+
+        return 0
+}
+
+reload_xdpi() {
+        # Unload and reload xdpi-bpf module
+        unload_xdpi
+        load_xdpi
+
+        # Check if xdpi-bpf module is loaded
+        if ! lsmod | grep -q xdpi; then
+                echo "xdpi module not loaded" >&2
+
+                return 1
+        fi
+
+        return 0
+}
+
+load_dns_bpf_program() {
+        local dns_bpf_file="/lib/bpf/dns-bpf.o"
+
+        # Load DNS BPF program globally (only once, not per interface)
+        if [ -f "$dns_bpf_file" ] && [ ! -e /sys/fs/bpf/tc/globals/dns_egress ]; then
+                # Create tc/globals directory if it doesn't exist
+                mkdir -p /sys/fs/bpf/tc/globals
+
+                echo "Loading DNS BPF program from: $dns_bpf_file (global load)"
+
+                # Wait a bit to ensure aw-bpf maps are properly created on first interface
+                sleep 2
+
+                # Load DNS egress handler via bpftool with better error handling
+                local dns_prog_id
+                local load_output
+                load_output=$(bpftool prog load "$dns_bpf_file" /sys/fs/bpf/tc/globals/dns_egress type classifier 2>&1)
+                local load_status=$?
+
+                if [ $load_status -eq 0 ]; then
+                        echo "DNS BPF program loaded successfully"
+
+                        # Pin maps to the correct location (/sys/fs/bpf/tc/globals/)
+                        sleep 1  # Wait for maps to be created
+
+                        # Move dns_ringbuf to correct location
+                        if [ -e /sys/fs/bpf/dns_ringbuf ] && [ ! -e /sys/fs/bpf/tc/globals/dns_ringbuf ]; then
+                                bpftool map pin name dns_ringbuf /sys/fs/bpf/tc/globals/dns_ringbuf 2>/dev/null && \
+                                rm -f /sys/fs/bpf/dns_ringbuf
+                                echo "dns_ringbuf pinned to /sys/fs/bpf/tc/globals/"
+                        fi
+
+                        # Move dns_stats_map to correct location  
+                        if [ -e /sys/fs/bpf/dns_stats_map ] && [ ! -e /sys/fs/bpf/tc/globals/dns_stats_map ]; then
+                                bpftool map pin name dns_stats_map /sys/fs/bpf/tc/globals/dns_stats_map 2>/dev/null && \
+                                rm -f /sys/fs/bpf/dns_stats_map
+                                echo "dns_stats_map pinned to /sys/fs/bpf/tc/globals/"
+                        fi
+
+                        # Get program ID using multiple methods
+                        dns_prog_id=$(bpftool prog show name dns_handler_egress 2>/dev/null | head -1 | cut -d: -f1)
+
+                        if [ -z "$dns_prog_id" ]; then
+                                # Alternative method: get from pinned program
+                                dns_prog_id=$(bpftool prog show pinned /sys/fs/bpf/tc/globals/dns_egress 2>/dev/null | head -1 | cut -d: -f1)
+                        fi
+
+                        if [ -z "$dns_prog_id" ]; then
+                                # Last resort: parse from load output if available
+                                dns_prog_id=$(echo "$load_output" | grep -o 'id [0-9]*' | cut -d' ' -f2)
+                        fi
+                else
+                        echo "Failed to load DNS BPF program. Error: $load_output" >&2
+                        return 1
+                fi
+
+                if [ -n "$dns_prog_id" ] && [ "$dns_prog_id" -gt 0 ] 2>/dev/null; then
+                        echo "dns-bpf egress program loaded with ID: $dns_prog_id (pinned to /sys/fs/bpf/tc/globals/dns_egress)"
+
+                        # Wait for maps to be created
+                        sleep 1
+
+                        # Setup tail call in prog_array_map (index 0 for DNS egress) if available
+                        if bpftool map show name prog_array_map >/dev/null 2>&1 || bpftool map show pinned /sys/fs/bpf/tc/globals/prog_array_map >/dev/null 2>&1; then
+                                echo "Adding DNS program (ID: $dns_prog_id) to prog_array_map"
+
+                                # Try both name and pinned path with correct format
+                                # For prog_array maps, key should be byte array format and value should be "id <program_id>"
+                                if bpftool map update name prog_array_map key 00 00 00 00 value id $dns_prog_id 2>/dev/null || \
+                                   bpftool map update pinned /sys/fs/bpf/tc/globals/prog_array_map key 00 00 00 00 value id $dns_prog_id 2>/dev/null; then
+                                        echo "DNS egress program (ID: $dns_prog_id) added to prog_array_map at index 0"
+                                else
+                                        echo "Failed to add DNS program to prog_array_map" >&2
+                                fi
+                        else
+                                echo "prog_array_map not found. DNS program loaded but tail call not configured." >&2
+                                echo "DNS program will work independently without tail call integration." >&2
+                        fi
+                else
+                        echo "Failed to load dns-bpf program or get valid program ID (got: '$dns_prog_id')" >&2
+                        # Show more debug info
+                        echo "Available BPF programs:" >&2
+                        bpftool prog list 2>/dev/null | grep -E "(classifier|dns)" || echo "No relevant programs found"
+                        return 1
+                fi
+        elif [ -f "$dns_bpf_file" ] && [ -e /sys/fs/bpf/tc/globals/dns_egress ]; then
+                echo "DNS BPF program already loaded (pinned at /sys/fs/bpf/tc/globals/dns_egress)"
+        else
+                echo "dns-bpf.o not found at $dns_bpf_file, skipping DNS program loading" >&2
+        fi
+
+        return 0
+}
+
+load_bpf_programs() {
+        local gateway_name="$1"
+        local iface
+        local aw_bpf_file="/lib/bpf/aw-bpf.o"
+
+        config_get gateway_name "$section" gateway_name
+        iface=$gateway_name
+        echo "load_bpf_programs: $iface"
+
+        # Check if interface exists
+        [ -z "$iface" ] && return 1
+        [ ! -e "/sys/class/net/$iface" ] && return 1
+
+        # Add clsact qdisc
+        tc qdisc add dev "$iface" clsact 2>/dev/null || true
+
+        # Load main aw-bpf.o program via TC if available (per interface)
+        if [ -f "$aw_bpf_file" ]; then
+                tc filter add dev "$iface" ingress prio 1 bpf da obj "$aw_bpf_file" sec tc/ingress 2>/dev/null
+                tc filter add dev "$iface" egress prio 1 bpf da obj "$aw_bpf_file" sec tc/egress 2>/dev/null
+                if [ $? -eq 0 ]; then
+                        echo "aw-bpf loaded successfully on $iface"
+                else
+                        echo "Failed to load aw-bpf on $iface" >&2
+                        return 1
+                fi
+        else
+                echo "aw-bpf.o not found, skipping" >&2
+                return 1
+        fi
+
+        return 0
+}
+
+handle_gateway() {
+        local section="$1"
+        local gateway_name gateway_channel gateway_id
+        local gateway_subnetv4
+        local gateway_auth_enabled
+
+        config_get gateway_name "$section" gateway_name
+        config_get gateway_channel "$section" gateway_channel
+        config_get gateway_id "$section" gateway_id
+        config_get gateway_auth_enabled "$section" gateway_auth_enabled 1
+
+
+        if [ -z "$gateway_name" ] || [ -z "$gateway_channel" ] ; then
+                echo "gateway_name and gateway_channel  are required for $section" >&2
+                return
+        fi
+
+        # Get gateway_id from gateway_name if not set
+        if [ -z "$gateway_id" ]; then
+                gateway_id=$(ifconfig "$gateway_name" | awk '/HWaddr/ {print toupper($5)}' | tr -d ':')
+                if [ -z "$gateway_id" ]; then
+                        echo "Failed to get gateway_id for $gateway_name" >&2
+                        return
+                fi
+                uci set wifidogx."$section".gateway_id="$gateway_id"
+                uci commit wifidogx
+        fi
+        # according to the gateway_name to get the subnetv4
+        local gateway_ipv4=$(ifconfig "$gateway_name" | awk '/inet addr:/ {print $2}' | cut -d: -f2)
+        local gateway_maskv4=$(ifconfig "$gateway_name" | awk '/Mask:/ {print $4}' | cut -d: -f2)
+        [ -z "$gateway_ipv4" ] && echo "Failed to get gateway_ipv4 for $gateway_name" >&2 && return
+        [ -z "$gateway_maskv4" ] && echo "Failed to get gateway_maskv4 for $gateway_name" >&2 && return
+
+        # change the gateway_ip4/gateway_maskv4 to CIDR format
+        local mask_bits=0
+        local mask_value=$(printf '%d' "0x$(echo $gateway_maskv4 | tr '.' ' ' | awk '{printf "%02x%02x%02x%02x",$1,$2,$3,$4}')")
+        while [ $mask_value -ne 0 ]; do
+                mask_bits=$((mask_bits + (mask_value & 1)))
+                mask_value=$((mask_value >> 1))
+        done
+        gateway_subnetv4="$gateway_ipv4/$mask_bits"
+
+        uci set wifidogx."$section".gateway_subnetv4="$gateway_subnetv4"
+        uci commit wifidogx
+
+        printf "GatewaySetting {\n\tGatewayAuthEnabled %s\n\tGatewayInterface %s\n\tGatewayChannel %s\n\tGatewayID %s\n\tGatewaySubnetV4 %s\n}\n" \
+                 "${gateway_auth_enabled}" "${gateway_name}" "${gateway_channel}" "${gateway_id}" "${gateway_subnetv4}" >> "$CONFIGFILE"
+}
+
+add_white_list_entries() {
+        local list_type="$1"
+        local uci_field="$2"
+        local target_variable="$3"
+
+        list_type=$(uci get wifidogx.common."$list_type")
+        for group in $list_type; do
+                group_list=$(uci get wifidogx."$group"."$uci_field")
+                if [ -n "$group_list" ]; then
+                        eval "$target_variable=\"\${$target_variable} \$group_list\""
+                fi
+        done
+}
+
+prepare_common_settings() {
+        printf "CheckInterval %s\nClientTimeout %s\nJsFilter %s\nWiredPassed %s\nBypassAppleCNA %s\nEnableDNSForward %s\n" \
+                "$check_interval" "$client_timeout" "$js_filter" "$wired_passed" "$apple_cna" "$enable_dns_forward" >> "$CONFIGFILE"
+
+        printf "EnableAntiNat %s\n" "$enable_anti_nat" >> "$CONFIGFILE"
+        printf "TTLValues %s\n" "$ttl_values" >> "$CONFIGFILE"
+
+        [ -n "$anti_nat_permit_macs" ] && printf "AntiNatPermitMACs %s\n" "$anti_nat_permit_macs" >> "$CONFIGFILE"
+
+        process_trusted_list() {
+                local list="$1"
+                local config_name="$2"
+
+                if [ -n "$list" ]; then
+                        # Clean up whitespace and remove duplicates
+                        list=$(echo "$list" | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\+/ /g' \
+                                | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+                        printf "%s %s\n" "$config_name" "$list" >> "$CONFIGFILE"
+                fi
+        }
+
+        process_trusted_list "$trusted_domains" "TrustedDomains"
+        process_trusted_list "$trusted_macs" "TrustedMACList"
+        process_trusted_list "$trusted_wildcard_domains" "TrustedWildcardDomains"
+}
+
+prepare_device_info() {
+        # Check if any device info fields are set
+        if [ -n "$ap_device_id" ] || [ -n "$ap_mac_address" ] || [ -n "$ap_longitude" ] || [ -n "$ap_latitude" ] || [ -n "$location_id" ]; then
+                printf "DeviceInfo {\n" >> "$CONFIGFILE"
+
+                [ -n "$ap_device_id" ] && printf "\tApDeviceId %s\n" "$ap_device_id" >> "$CONFIGFILE"
+                [ -n "$ap_mac_address" ] && printf "\tApMacAddress %s\n" "$ap_mac_address" >> "$CONFIGFILE"
+                [ -n "$ap_longitude" ] && printf "\tApLongitude %s\n" "$ap_longitude" >> "$CONFIGFILE"
+                [ -n "$ap_latitude" ] && printf "\tApLatitude %s\n" "$ap_latitude" >> "$CONFIGFILE"
+                [ -n "$location_id" ] && printf "\tLocationId %s\n" "$location_id" >> "$CONFIGFILE"
+
+                printf "}\n" >> "$CONFIGFILE"
+        fi
+}
+
+prepare_auth_server_settings() {
+        case "$auth_server_mode" in
+        cloud|bypass)
+                printf "AuthServerMode 0\n" >> "$CONFIGFILE"
+                printf "DeviceID %s\nAuthServer {\n\tHostname %s\n\tHTTPPort %s\n\tPath %s\n}\n" \
+                        "$device_id" "$auth_server_hostname" "$auth_server_port" "$auth_server_path" >> "$CONFIGFILE" 
+                case "$long_conn_mode" in
+                ws|wss)
+                        ws_hostname="${ws_server_hostname:-$auth_server_hostname}"
+                        ws_port="${ws_server_port:-$auth_server_port}"
+                        ws_ssl=$([ "$long_conn_mode" = "wss" ] && echo 1 || echo 0)
+                        printf "WebSocket {\n\tWSServer %s\n\tWSServerPort %s\n\tWSServerPath %s\n\tWSServerSSL %s\n}\n" \
+                                "$ws_hostname" "$ws_port" "$ws_server_path" "$ws_ssl" >> "$CONFIGFILE"
+                        ;;
+                mqtt)
+                        mqtt_hostname="${mqtt_server_hostname:-$auth_server_hostname}"
+                        mqtt_port="${mqtt_server_port:-1883}"
+                        printf "MQTT {\n\tMQTTHost %s\n\tMQTTPort %s\n\tMQTTUsername %s\n\tMQTTPassword %s\n}\n" \
+                                "$mqtt_hostname" "$mqtt_port" "${mqtt_username:-}" "${mqtt_password:-}" >> "$CONFIGFILE"
+                        ;;
+                esac
+                        ;;
+        local)
+                printf "AuthServerMode 2\n" >> "$CONFIGFILE"
+                [ -n "$auth_server_offline_file" ] && printf "AuthServerOfflineFile %s\n" "$auth_server_offline_file" >> "$CONFIGFILE"
+                [ -n "$local_portal" ] && printf "LocalPortal %s\n" "$local_portal" >> "$CONFIGFILE"
+                ;;
+        esac
+
+        [ -n "$internet_offline_file" ] && printf "InternetOfflineFile %s\n" "$internet_offline_file" >> "$CONFIGFILE"
+}
+
+prepare_external_interface() {
+        [ -z "$external_interface" ] && echo "No ExternalInterface " >&2 && return
+        local external_interface_name
+
+        if [ "$external_interface" = "wwan" ]; then
+                external_interface_name=$(ubus call network.interface."$external_interface" status | jsonfilter -e '@.device')
+        else
+                external_interface_name=$(uci get network."$external_interface".device)
+        fi
+
+        [ -z "$external_interface_name" ] && echo "Failed to get device name for $external_interface" >&2 && return
+  
+        printf "ExternalInterface %s\n" "$external_interface_name" >> "$CONFIGFILE"
+}
+
+prepare_wifidog_conf() {
+        [ -f "$CONFIGFILE" ] && rm -f "$CONFIGFILE"
+        local long_conn_mode_value='"ws", "wss", "mqtt", "none"'
+        local auth_server_mode_value='"cloud", "bypass", "local"'
+    
+        uci_validate_section "$NAME" "$NAME" common \
+                'enabled:bool:0' \
+                "auth_server_mode:or($auth_server_mode_value)" \
+                'log_level:integer:7' \
+                'device_id:string' \
+                'auth_server_hostname:string' \
+                'auth_server_port:port:443' \
+                'auth_server_path:string:/wifidog/' \
+                'check_interval:integer:60' \
+                'client_timeout:integer:5' \
+                'wired_passed:bool:1' \
+                'apple_cna:bool:0' \
+                'trusted_domains:list(host)' \
+                'trusted_wildcard_domains:list(string)' \
+                'trusted_macs:list(string)' \
+                'app_white_list:list(string)' \
+                'mac_white_list:list(string)' \
+                'wildcard_white_list:list(string)' \
+                'enable_dns_forward:bool:1' \
+                "long_conn_mode:or($long_conn_mode_value)" \
+                'ws_server_hostname:string' \
+                'ws_server_port:port:80' \
+                'ws_server_path:string:/ws/wifidogx' \
+                'mqtt_server_hostname:string' \
+                'mqtt_server_port:port:1883' \
+                'mqtt_username:string' \
+                'mqtt_password:string' \
+                'js_filter:bool:1' \
+                'auth_server_offline_file:string' \
+                'internet_offline_file:string' \
+                'local_portal:string' \
+                'external_interface:string'     \
+                'enable_anti_nat:bool:0' \
+                'ttl_values:string:64,128' \
+                'anti_nat_permit_macs:string' \
+                'enable_event_log:bool:0' \
+                'ap_device_id:string' \
+                'ap_mac_address:string' \
+                'ap_longitude:string' \
+                'ap_latitude:string' \
+                'location_id:string'
+
+        [ -n "$app_white_list" ] && add_white_list_entries "app_white_list" "domain_name" "trusted_domains"
+        [ -n "$mac_white_list" ] && add_white_list_entries "mac_white_list" "mac_address" "trusted_macs"
+        [ -n "$wildcard_white_list" ] && add_white_list_entries "wildcard_white_list" "wildcard_domain" "trusted_wildcard_domains"
+
+        prepare_external_interface
+        prepare_auth_server_settings
+        prepare_device_info
+        unload_global_bpf_resources
+        config_foreach unload_bpf_programs gateway
+        reload_xdpi
+        config_foreach load_bpf_programs gateway
+        load_dns_bpf_program
+        config_foreach handle_gateway gateway
+        prepare_common_settings
+}
+
 start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/wifidogx
-    procd_set_param respawn
-    procd_close_instance
+        config_load "$NAME"
+
+        prepare_wifidog_conf
+
+        if [ "$enabled" -eq 0 ]; then
+                echo "wifidogx is disabled, exit..." >&2
+                return
+        fi
+
+        procd_open_instance
+        procd_set_param command "$PROG" -c "$CONFIGFILE" -s -f -d "$log_level"
+        procd_set_param respawn
+        procd_set_param file /etc/config/wifidogx
+        procd_close_instance
+}
+
+status_service() {
+        /usr/bin/wdctlx status
+}
+
+reload_service() {
+        stop
+        start
+}
+
+service_triggers() {
+        procd_add_reload_trigger "wifidogx" "firewall"
+        procd_add_interface_trigger "interface.*.up" "wan" /etc/init.d/wifidogx reload
+        procd_add_interface_trigger "interface.*.up" "wan6" /etc/init.d/wifidogx reload
+        procd_add_interface_trigger "interface.*.up" "wwan" /etc/init.d/wifidogx reload
+        procd_add_interface_trigger "interface.*.up" "wwan6" /etc/init.d/wifidogx reload
+        procd_add_interface_trigger "interface.*.up" "lan" /etc/init.d/wifidogx reload
 }
 EOF
