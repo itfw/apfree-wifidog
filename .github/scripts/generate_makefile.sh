@@ -46,7 +46,6 @@ define Package/apfree-wifidog/install
 	$(INSTALL_DIR) $(1)/usr/bin $(1)/lib/bpf $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wifidogx $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/wdctlx $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/wdping $(1)/usr/sbin/
 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/bpf/*.o $(1)/lib/bpf/ 2>/dev/null || true
 	$(INSTALL_BIN) ./files/wifidog.init $(1)/etc/init.d/wifidog
 	$(CP) $(PKG_BUILD_DIR)/config/wifidog.conf $(1)/etc/config/wifidogx 2>/dev/null || true
