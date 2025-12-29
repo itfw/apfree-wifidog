@@ -25,75 +25,51 @@ jobs:
         with:
           path: apfree-wifidog-src
 
-      - name: Install Build Dependencies
-        run: |
-          sudo apt-get update
-          # 安装编译所需的工具，使用正确的包名
-          sudo apt-get install -y clang llvm libelf-dev libbpf-dev cmake ninja-build
-          # 安装 bpftool（在 Ubuntu 上通过 linux-tools-common 包提供）
-          sudo apt-get install -y linux-tools-common linux-tools-generic
-
       - name: Update and Filter Feeds
         working-directory: ./sdk
         run: |
           ./scripts/feeds update -a
-          ./scripts/feeds uninstall apfree-wifidog apfree-wifidog-ebpf || true
+          ./scripts/feeds uninstall apfree-wifidog || true
           rm -rf feeds/packages/net/apfree-wifidog
+
 
           # 安装必要的编译依赖
           ./scripts/feeds install libevent2 libuci libubox libjson-c libnftnl libmnl \
-                                  libnetfilter-queue libmosquitto libopenssl libcurl libbpf \
-                                  libelf libpthread
+                                  libnetfilter-queue libmosquitto libopenssl libcurl libbpf
 
       - name: Prepare Local Package
         run: |
-          rm -rf sdk/package/apfree-wifidog*
+          rm -rf sdk/package/apfree-wifidog
           mkdir -p sdk/package/apfree-wifidog/src
           cp -r apfree-wifidog-src/. sdk/package/apfree-wifidog/src/
           
           chmod +x ./apfree-wifidog-src/.github/scripts/generate_makefile.sh
           ./apfree-wifidog-src/.github/scripts/generate_makefile.sh ./sdk ./apfree-wifidog-src
 
-      - name: Compile IPKs
+      - name: Compile IPK
         working-directory: ./sdk
         run: |
           echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
-          echo "CONFIG_PACKAGE_apfree-wifidog-ebpf=y" >> .config
           make defconfig
-          grep -E "apfree-wifidog" .config
-          # 编译主程序和 eBPF 组件
+          grep "apfree-wifidog" .config
+          #sed -i 's/CONFIG_PACKAGE_apfree-wifidog=m/CONFIG_PACKAGE_apfree-wifidog=y/g' .config
           make package/apfree-wifidog/compile V=s -j$(nproc)
-          make package/apfree-wifidog-ebpf/compile V=s -j$(nproc)
 
-      - name: Find built IPKs
+
+      - name: Find built IPK
         run: |
-          echo "Looking for main IPK files..."
           find . -name "apfree-wifidog*.ipk" -type f
-          echo "Listing all IPK files in bin/packages/x86_64/"
+          find . -name "*apfree-wifidog*.ipk" -type f
+          echo "Looking for IPK files..."
+          find . -name "apfree-wifidog_*.ipk" -type f
+          echo "Listing all .ipk files in bin/packages/x86_64/"
           find ./sdk/bin/packages/x86_64/ -name "*.ipk" -type f -ls
 
-      - name: Upload Main Package Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-main-x86_64
+          name: apfree-wifidog-x86_64
+          #path: sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
           path: |
-            sdk/bin/packages/x86_64/base/apfree-wifidog_*.ipk
-            sdk/bin/packages/x86_64/packages/apfree-wifidog_*.ipk
-          if-no-files-found: ignore
-
-      - name: Upload eBPF Package Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apfree-wifidog-ebpf-x86_64
-          path: |
-            sdk/bin/packages/x86_64/base/apfree-wifidog-ebpf_*.ipk
-            sdk/bin/packages/x86_64/packages/apfree-wifidog-ebpf_*.ipk
-          if-no-files-found: ignore
-
-      - name: Upload All Packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: apfree-wifidog-all-x86_64
-          path: |
-            sdk/bin/packages/x86_64/**/*.ipk
+            sdk/bin/packages/x86_64/base/apfree-wifidog*.ipk
           if-no-files-found: error
