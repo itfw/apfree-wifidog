@@ -1,10 +1,10 @@
 name: Build apfree-wifidog IPK for OpenWrt x86_64
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  #push:
+  #  branches: [ "main", "master" ]
+  #pull_request:
+  #  branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
