@@ -38,9 +38,16 @@ jobs:
       - name: Prepare SDK feeds and link apfree-wifidog
         working-directory: openwrt-sdk
         run: |
+          # Ensure feeds.conf exists
+          if [ ! -f feeds.conf ]; then
+            cp feeds.conf.default feeds.conf
+          fi
+          # Append our package with CORRECT name (hyphen!)
           echo "src-link apfree-wifidog $GITHUB_WORKSPACE/apfree-wifidog" >> feeds.conf
+          cat feeds.conf  # debug: print it
+          ./scripts/feeds clean
           ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds install apfree-wifidog
 
       - name: Enable apfree-wifidog in .config
         working-directory: openwrt-sdk
