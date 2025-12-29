@@ -75,6 +75,10 @@ jobs:
           CONFIG_PACKAGE_tc-full=y
           CONFIG_PACKAGE_bpf-headers=y
           CONFIG_PACKAGE_libbpf=y
+          CONFIG_PACKAGE_kmod-sched-bpf=y
+          CONFIG_PACKAGE_bpftool-minimal=y
+          CONFIG_PACKAGE_luci-app-apfree-wifidog=y
+          CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
           make defconfig
