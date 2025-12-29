@@ -13,6 +13,7 @@ jobs:
 
     env:
       SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+      NEW_PKG_HASH: 9dfcae62ddd77c7c00eabc76b45acba10ec2cd1ec0dbb022bfd357dc178609a3
 
     steps:
       - name: Checkout apfree-wifidog source
@@ -48,6 +49,16 @@ jobs:
           ./scripts/feeds clean
           ./scripts/feeds update -a
           ./scripts/feeds install apfree-wifidog
+      
+      - name: Patch Makefile to use correct PKG_HASH
+        working-directory: openwrt-sdk
+        run: |
+          # Path to the installed package Makefile
+          MAKEFILE="package/feeds/packages/apfree-wifidog/Makefile"
+          # Replace the PKG_HASH line (whether commented or not)
+          sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MAKEFILE"
+          # Optional: verify
+          grep "PKG_HASH" "$MAKEFILE"
 
       - name: Enable apfree-wifidog in .config
         working-directory: openwrt-sdk
