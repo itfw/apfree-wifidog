@@ -19,15 +19,19 @@ jobs:
 
       - name: Download SDK from Aliyun
         run: |
-          SDK_URL="https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz"
+          SDK_URL="https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           echo "Downloading SDK from Aliyun: $SDK_URL"
-          wget -q --show-progress "$SDK_URL" -O sdk.tar.xz
+          wget -q "$SDK_URL" -O sdk.tar.zst
+
           if [ ! -s sdk.tar.xz ]; then
             echo "SDK download failed (file empty). Check if 24.10.5 exists!"
             exit 1
           fi
 
-          tar -xf sdk.tar.xz
+          
+          sudo apt-get update
+          sudo apt-get install -y zstd
+          tar -I zstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
           cd sdk && pwd
 
