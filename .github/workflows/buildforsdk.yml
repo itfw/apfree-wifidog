@@ -1,27 +1,21 @@
-name: Build apfree-wifidog for OpenWrt 24.10.5 (x86_64)
+
+name: Build apfree-wifidog
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Ubuntu 24.04 as of 2025
+    runs-on: ubuntu-latest
 
     env:
       SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
       NEW_PKG_HASH: 9dfcae62ddd77c7c00eabc76b45acba10ec2cd1ec0dbb022bfd357dc178609a3
 
     steps:
-      - name: Checkout apfree-wifidog source
-        uses: actions/checkout@v4
-        with:
-          path: apfree-wifidog
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential ccache flex bison gawk gettext \
@@ -30,26 +24,18 @@ jobs:
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-      - name: Download OpenWrt SDK (from Aliyun)
+      - name: Download OpenWrt SDK
         run: |
           wget -O sdk.tar.zst "${SDK_URL}"
           mkdir -p openwrt-sdk
           zstd -d --long=31 sdk.tar.zst -c | tar -x -C openwrt-sdk --strip-components=1
 
-      - name: Prepare SDK feeds and link apfree-wifidog
+      - name: Update and install apfree-wifidog from feeds
         working-directory: openwrt-sdk
         run: |
-          # Ensure feeds.conf exists
-          if [ ! -f feeds.conf ]; then
-            cp feeds.conf.default feeds.conf
-          fi
-          # Append our package with CORRECT name (hyphen!)
-          echo "src-link apfree-wifidog $GITHUB_WORKSPACE/apfree-wifidog" >> feeds.conf
-          cat feeds.conf  # debug: print it
-          ./scripts/feeds clean
-          ./scripts/feeds update -a
+          ./scripts/feeds update packages
           ./scripts/feeds install apfree-wifidog
-      
+
       - name: Patch Makefile to use correct PKG_HASH
         working-directory: openwrt-sdk
         run: |
@@ -60,13 +46,11 @@ jobs:
           # Optional: verify
           grep "PKG_HASH" "$MAKEFILE"
 
-      - name: Enable apfree-wifidog in .config
+      - name: Enable apfree-wifidog in config
         working-directory: openwrt-sdk
         run: |
           make defconfig
           echo "CONFIG_PACKAGE_apfree-wifidog=y" >> .config
-          # Optional: enable kmod-xdpi if needed
-          echo "CONFIG_PACKAGE_kmod-xdpi=m" >> .config
           make defconfig
 
       - name: Compile apfree-wifidog
@@ -74,14 +58,11 @@ jobs:
         run: |
           make package/apfree-wifidog/compile V=s
 
-      - name: Locate built IPKs
+      - name: Find and upload IPK
         run: |
-          find openwrt-sdk/bin/packages -name "apfree-wifidog_*.ipk" | tee ipk_list.txt
-          cat ipk_list.txt
-
-      - name: Upload apfree-wifidog IPK
-        uses: actions/upload-artifact@v4
+          find openwrt-sdk/bin/packages -name "apfree-wifidog_*.ipk" -type f
+      - uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-openwrt-24.10.5-x86_64
+          name: apfree-wifidog-24.10.5-x86_64
           path: openwrt-sdk/bin/packages/**/apfree-wifidog_*.ipk
           if-no-files-found: error
