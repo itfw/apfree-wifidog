@@ -28,7 +28,10 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libelf-dev libbpf-dev bpftool cmake ninja-build
+          # 安装编译所需的工具，使用正确的包名
+          sudo apt-get install -y clang llvm libelf-dev libbpf-dev cmake ninja-build
+          # 安装 bpftool（在 Ubuntu 上通过 linux-tools-common 包提供）
+          sudo apt-get install -y linux-tools-common linux-tools-generic
 
       - name: Update and Filter Feeds
         working-directory: ./sdk
