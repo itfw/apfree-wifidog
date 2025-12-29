@@ -38,7 +38,7 @@ jobs:
       - name: Prepare SDK feeds and link apfree-wifidog
         working-directory: openwrt-sdk
         run: |
-          echo "src-link apfree_wifidog $GITHUB_WORKSPACE/apfree-wifidog" >> feeds.conf
+          echo "src-link apfree-wifidog $GITHUB_WORKSPACE/apfree-wifidog" >> feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
