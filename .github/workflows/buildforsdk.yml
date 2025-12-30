@@ -33,7 +33,6 @@ jobs:
       - name: Update all feeds and packages
         working-directory: openwrt-sdk
         run: |
-
           cat > feeds.conf << EOF
           src-git packages https://github.com/liudf0716/packages.git;chawrt/24.10
           src-git luci https://github.com/liudf0716/luci.git;chawrt/24.10
@@ -42,16 +41,13 @@ jobs:
           EOF
           
           # 更新 feeds
-          ./scripts/feeds update -a -f feeds.conf
-          ./scripts/feeds update packages
+          ./scripts/feeds update -a
+          
+          # 安装 feeds (先安装基础包，再安装全部以防遗漏)
           ./scripts/feeds install -a -p packages
-          ./scripts/feeds update luci
           ./scripts/feeds install -a -p luci
-          
-          
-          # 安装所有依赖包
           ./scripts/feeds install -a
-          
+
           # 清理可能存在的冲突
           rm -rf tmp/
           rm -f .config .config.old
@@ -94,24 +90,36 @@ jobs:
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
-         
+          # 展开依赖关系，生成完整的 .config
+          make defconfig
 
-
-      - name: Compile apfree-wifidog 
+      - name: Compile apfree-wifidog
         working-directory: openwrt-sdk
         run: |
-
-          ./scripts/feeds install libevent2 libuci libubox libjson-c libnftnl libmnl \
-                                  libnetfilter-queue libmosquitto libopenssl libcurl libbpf
+          echo "Starting compilation process..."
           
-
-          make defconfig
-  
+          # 1. 显式预编译底层依赖库 (解决 libmnl/pkg-config 报错的关键)
+          # 注意：V=s 显示详细日志，方便出错调试
+          echo "Pre-compiling libmnl..."
+          make package/feeds/packages/libmnl/compile V=s
+          
+          echo "Pre-compiling libnftnl..."
+          make package/feeds/packages/libnftnl/compile V=s
+          
+          echo "Pre-compiling libnetfilter-cthelper..."
+          make package/feeds/packages/libnetfilter-cthelper/compile V=s
+          
+          echo "Pre-compiling libnetfilter-queue..."
+          make package/feeds/packages/libnetfilter-queue/compile V=s
+          
+          # 2. 编译目标插件
+          echo "Compiling apfree-wifidog..."
           make package/apfree-wifidog/compile V=s
 
       - name: Check and list built packages
         working-directory: openwrt-sdk
         run: |
+          echo "Listing generated packages:"
           find bin/ -name "*.ipk" -type f | grep -i apfree || true
           find bin/ -name "*.ipk" -type f | head -20
 
