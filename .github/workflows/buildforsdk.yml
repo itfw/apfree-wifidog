@@ -1,4 +1,4 @@
-name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Full Suite
+name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Final Fixed
 
 on:
   workflow_dispatch:
@@ -41,65 +41,85 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Patch Remote Makefile
+      - name: Patch apfree-wifidog Makefile
         working-directory: openwrt-sdk
         run: |
-          # 定位 Makefile
-          MF=$(find package/feeds/packages/ -name Makefile | grep "apfree-wifidog/Makefile")
-          if [ -f "$MF" ]; then
-            echo "Patching Makefile at $MF"
-            # 1. 修正 Hash
-            sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
-            # 2. 强行插入 CMake 编译指令（防止被 Build/Compile 覆盖）
-            sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
-            # 3. 补充依赖库声明
-            sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
+          # 自动检测路径：支持 feeds 源码路径和 package 链接路径
+          PATH1="feeds/packages/net/apfree-wifidog/Makefile"
+          PATH2="package/feeds/packages/apfree-wifidog/Makefile"
+          
+          if [ -f "$PATH1" ]; then
+            MF="$PATH1"
+          elif [ -f "$PATH2" ]; then
+            MF="$PATH2"
+          else
+            echo "ERROR: Makefile not found! Looking for it..."
+            MF=$(find . -name Makefile | grep apfree-wifidog | head -n 1)
           fi
 
-      - name: Configure Build
+          if [ -z "$MF" ] || [ ! -f "$MF" ]; then
+            echo "CRITICAL ERROR: Cannot locate Makefile."
+            exit 1
+          fi
+
+          echo "Target Makefile: $MF"
+
+          # 1. 修正 PKG_HASH
+          sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
+          
+          # 2. 补全缺失依赖 (libnetfilter-cthelper)
+          if ! grep -q "libnetfilter-cthelper" "$MF"; then
+            sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
+          fi
+          
+          # 3. 修复 Build/Compile 逻辑 (插入 CMake 调用)
+          # 注意：Makefile 必须使用 Tab 缩进，\t 会被 bash 解析为 Tab
+          if ! grep -q "CMake/Compile" "$MF"; then
+            sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
+            echo "Successfully inserted CMake/Compile call."
+          fi
+
+      - name: Configure and Compile
         working-directory: openwrt-sdk
         run: |
-          # 核心包配置
+          # 写入最小化 .config
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_PACKAGE_apfree-wifidog=y
           CONFIG_PACKAGE_kmod-xdpi=y
-          # 依赖库确保开启
           CONFIG_PACKAGE_libmnl=y
           CONFIG_PACKAGE_libnetfilter-cthelper=y
-          # 你的 Luci 界面需求
           CONFIG_PACKAGE_luci-app-apfree-wifidog=y
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
-          # 扩展依赖并清理环境
           make defconfig
-
-      - name: Compile Packages
-        working-directory: openwrt-sdk
-        run: |
-          # 1. 优先编译底层核心库（防止并行报错）
+          
+          # 1. 预编译底层依赖 (解决 pkg-config 找不到 libmnl 的报错)
+          echo "Compiling base dependencies..."
           make package/feeds/packages/libmnl/compile V=s
           make package/feeds/packages/libnetfilter-cthelper/compile V=s
           
           # 2. 编译主程序
+          echo "Compiling apfree-wifidog..."
           make package/feeds/packages/apfree-wifidog/compile V=s
           
-          # 3. 编译 Luci 插件
-          # 注意：Luci 通常在 feeds/luci 目录下，我们直接用包名让 make 自动查找
-          make package/luci-app-apfree-wifidog/compile V=s
+          # 3. 编译 Luci 界面
+          echo "Compiling Luci interface..."
+          # 尝试多种可能的 Luci 路径
+          make package/feeds/luci/luci-app-apfree-wifidog/compile V=s || make package/luci-app-apfree-wifidog/compile V=s
 
-      - name: Check and List IPK Files
+      - name: Check Built Packages
         working-directory: openwrt-sdk
         run: |
-          echo "Built IPK files:"
-          find bin/ -name "*apfree*.ipk"
+          echo "Listing all generated IPK files:"
+          find bin/ -name "*.ipk" | grep -E "apfree|xdpi"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-full-suite
+          name: apfree-wifidog-x86_64
           path: |
             openwrt-sdk/bin/packages/x86_64/**/*.ipk
             openwrt-sdk/bin/targets/x86/64/packages/*.ipk
