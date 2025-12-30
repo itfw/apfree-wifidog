@@ -43,6 +43,10 @@ jobs:
           
           # 更新 feeds
           ./scripts/feeds update -a -f feeds.conf
+          ./scripts/feeds update packages
+          ./scripts/feeds install -a -p packages
+          ./scripts/feeds update luci
+          ./scripts/feeds install -a -p luci
           
           
           # 安装所有依赖包
