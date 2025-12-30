@@ -80,22 +80,35 @@ jobs:
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
+          # 刷新索引并应用配置
           make defconfig
           
-          # 基于 ls -R 确认的硬编码路径进行 install
-          echo "Installing base libraries..."
-          make package/feeds/base/libmnl/install V=s
-          make package/feeds/base/libnetfilter-queue/install V=s
-          
-          echo "Installing libnetfilter-cthelper..."
-          make package/feeds/packages/libnetfilter-cthelper/install V=s
+          echo "Compiling base libraries..."
+          # 24.10 SDK 中，直接使用包名通常比全路径更稳
+          make package/libmnl/compile V=s
+          make package/libnetfilter-queue/compile V=s
+          make package/libnetfilter-cthelper/compile V=s
           
           echo "Compiling apfree-wifidog..."
-          make package/feeds/packages/apfree-wifidog/compile V=s
+          make package/apfree-wifidog/compile V=s
           
           echo "Compiling Luci app..."
-          # luci-app 通常在 feeds/luci 下
-          make package/feeds/luci/luci-app-apfree-wifidog/compile V=s
+          make package/luci-app-apfree-wifidog/compile V=s
+
+      - name: Inspect IPK Contents (Verify Patch)
+        working-directory: openwrt-sdk
+        run: |
+          echo "=== Generated IPK Files ==="
+          find bin/ -name "apfree-wifidog*.ipk"
+          
+          IPK_FILE=$(find bin/ -name "apfree-wifidog*.ipk" | grep -v "luci" | head -n 1)
+          if [ -f "$IPK_FILE" ]; then
+            echo "Checking contents of $IPK_FILE"
+            # 列出 data.tar.gz 里的内容，确认是否有可执行文件
+            tar -ztf "$IPK_FILE"
+          else
+            echo "Main IPK not found!"
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
