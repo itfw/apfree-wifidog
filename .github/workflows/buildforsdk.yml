@@ -90,41 +90,19 @@ jobs:
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
+         
+
+
+      - name: Compile apfree-wifidog 
+        working-directory: openwrt-sdk
+        run: |
+
+          ./scripts/feeds install libevent2 libuci libubox libjson-c libnftnl libmnl \
+                                  libnetfilter-queue libmosquitto libopenssl libcurl libbpf
+          
+
           make defconfig
-
-      - name: Apply patches for libnetfilter issues
-        working-directory: openwrt-sdk
-        run: |
-          # 修复 libnetfilter 相关包的编译问题
-          if [ -f "package/feeds/packages/libnetfilter-cthelper/Makefile" ]; then
-            echo "Applying workaround for libnetfilter-cthelper..."
-            # 确保必要的构建工具存在
-            sudo apt install -y autoconf automake libtool m4 pkg-config
-            
-            # 清理可能的旧构建
-            rm -rf build_dir/target-x86_64_musl/libnetfilter-cthelper*
-          fi
-
-      - name: Download pre-built dependencies workaround
-        working-directory: openwrt-sdk
-        run: |
-          # 如果有必要，下载预编译的依赖包作为备选方案
-          mkdir -p dl/
-          wget -O dl/libnetfilter-cthelper-1.0.0.tar.bz2 \
-            "https://netfilter.org/projects/libnetfilter_cthelper/files/libnetfilter_cthelper-1.0.0.tar.bz2" || true
-
-      - name: Compile apfree-wifidog with dependency fix
-        working-directory: openwrt-sdk
-        run: |
-          # 先单独编译有问题的依赖包
-          make package/feeds/packages/libnetfilter-cthelper/compile V=s 2>&1 | tail -100 || true
-          
-          # 如果上面的失败了，尝试使用 force build
-          echo "Trying alternative build method..."
-          make package/feeds/packages/libnetfilter-cthelper/clean
-          make -j1 V=s package/feeds/packages/libnetfilter-cthelper/compile || true
-          
-          # 然后编译目标包
+  
           make package/apfree-wifidog/compile V=s
 
       - name: Check and list built packages
