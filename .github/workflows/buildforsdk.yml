@@ -1,4 +1,4 @@
-name: Build apfree-wifidog (Fixing Missing Dependencies)
+name: Build apfree-wifidog (Debug Path & Build)
 
 on:
   workflow_dispatch:
@@ -32,7 +32,6 @@ jobs:
       - name: Update and Install Feeds
         working-directory: openwrt-sdk
         run: |
-          # 核心修正：必须加入官方 base 仓库，否则 zlib/libuci 等基础库全部缺失
           cat > feeds.conf << EOF
           src-git base https://git.openwrt.org/openwrt/openwrt.git;v24.10.5
           src-git packages https://github.com/liudf0716/packages.git;chawrt/24.10
@@ -42,25 +41,44 @@ jobs:
           EOF
           
           ./scripts/feeds update -a
-          # 这一步会非常久，因为它在补全缺失的索引
+          # 显式安装关键包，确保建立物理符号链接
+          ./scripts/feeds install -p base libmnl libnetfilter-conntrack libnetfilter-queue zlib libuci libjson-c libevent2 openssl-util libnftnl
+          ./scripts/feeds install -p packages apfree-wifidog libnetfilter-cthelper
+          ./scripts/feeds install -p luci luci-app-apfree-wifidog
           ./scripts/feeds install -a
 
-      - name: Patch apfree-wifidog Makefile
+      - name: Debug and Patch Makefile
         working-directory: openwrt-sdk
         run: |
-          MF=$(find . -name Makefile | grep "apfree-wifidog/Makefile" | head -n 1)
-          if [ -z "$MF" ]; then echo "Makefile not found"; exit 1; fi
+          echo "=== DEBUG: Listing package/feeds structure ==="
+          ls -R package/feeds
+          
+          echo "=== Searching for Makefile ==="
+          MF=$(find package/feeds/ -name Makefile | grep "apfree-wifidog/Makefile" | head -n 1)
+          
+          if [ -z "$MF" ]; then
+            echo "ERROR: apfree-wifidog Makefile not found even after ls!"
+            exit 1
+          fi
+          
+          echo "Found Makefile at: $MF"
+          
+          # 1. 修正 Hash
           sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
-          # 确保依赖声明正确
-          sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper +libnetfilter-queue/g' "$MF"
+          
+          # 2. 补全依赖 (增加 +libnetfilter-cthelper)
+          sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
+          
+          # 3. 修复 Build/Compile 逻辑 (插入 CMake 调用)
           if ! grep -q "CMake/Compile" "$MF"; then
             sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
           fi
+          
+          echo "Patch applied successfully."
 
       - name: Configure and Compile
         working-directory: openwrt-sdk
         run: |
-          # 开启核心包配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
@@ -72,30 +90,23 @@ jobs:
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
-          # 自动补全 .config 中的依赖项
           make defconfig
-
-          # 增强版编译函数
-          safe_build() {
-            local name=$1
-            # 优先从 package/feeds 找，找不到再全局找
-            local p=$(find package/feeds -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
-            [ -z "$p" ] && p=$(find package -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
-            
-            if [ -n "$p" ]; then
-              echo ">>> Building $name in $p"
-              make "$p/install" V=s || make "$p/compile" V=s
-            else
-              echo ">>> Skipping $name: Not found in package tree"
-            fi
-          }
-
-          # 按照正确的拓扑顺序编译
-          safe_build "libmnl"
-          safe_build "libnetfilter-cthelper"
-          safe_build "libnetfilter-queue"
-          safe_build "apfree-wifidog"
-          safe_build "luci-app-apfree-wifidog"
+          
+          # 采用更稳健的编译命令
+          echo "Compiling libmnl..."
+          make package/feeds/base/libmnl/install V=s || make package/libmnl/install V=s
+          
+          echo "Compiling libnetfilter-cthelper..."
+          make package/feeds/packages/libnetfilter-cthelper/install V=s || make package/libnetfilter-cthelper/install V=s
+          
+          echo "Compiling apfree-wifidog..."
+          # 动态获取路径执行编译
+          AP_PATH=$(find package/feeds/ -name apfree-wifidog -type d | head -n 1)
+          make "${AP_PATH}/compile" V=s
+          
+          echo "Compiling Luci app..."
+          LC_PATH=$(find package/feeds/ -name luci-app-apfree-wifidog -type d | head -n 1)
+          make "${LC_PATH}/compile" V=s
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
