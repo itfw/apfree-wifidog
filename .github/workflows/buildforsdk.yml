@@ -1,4 +1,4 @@
-name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Final Fixed
+name: Build apfree-wifidog (Fixing Missing Dependencies)
 
 on:
   workflow_dispatch:
@@ -32,13 +32,17 @@ jobs:
       - name: Update and Install Feeds
         working-directory: openwrt-sdk
         run: |
+          # 核心修正：必须加入官方 base 仓库，否则 zlib/libuci 等基础库全部缺失
           cat > feeds.conf << EOF
+          src-git base https://git.openwrt.org/openwrt/openwrt.git;v24.10.5
           src-git packages https://github.com/liudf0716/packages.git;chawrt/24.10
           src-git luci https://github.com/liudf0716/luci.git;chawrt/24.10
           src-git routing https://git.openwrt.org/feed/routing.git
           src-git telephony https://git.openwrt.org/feed/telephony.git
           EOF
+          
           ./scripts/feeds update -a
+          # 这一步会非常久，因为它在补全缺失的索引
           ./scripts/feeds install -a
 
       - name: Patch apfree-wifidog Makefile
@@ -46,15 +50,9 @@ jobs:
         run: |
           MF=$(find . -name Makefile | grep "apfree-wifidog/Makefile" | head -n 1)
           if [ -z "$MF" ]; then echo "Makefile not found"; exit 1; fi
-          
-          echo "Patching $MF"
-          # 修正 Hash
           sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
-          
-          # 强制补全依赖声明，确保编译顺序正确
+          # 确保依赖声明正确
           sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper +libnetfilter-queue/g' "$MF"
-          
-          # 修复 Build/Compile 逻辑，确保 CMake 运行
           if ! grep -q "CMake/Compile" "$MF"; then
             sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
           fi
@@ -62,6 +60,7 @@ jobs:
       - name: Configure and Compile
         working-directory: openwrt-sdk
         run: |
+          # 开启核心包配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
@@ -69,41 +68,34 @@ jobs:
           CONFIG_PACKAGE_kmod-xdpi=y
           CONFIG_PACKAGE_libmnl=y
           CONFIG_PACKAGE_libnetfilter-cthelper=y
-          CONFIG_PACKAGE_libnetfilter-queue=y
           CONFIG_PACKAGE_luci-app-apfree-wifidog=y
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
+          # 自动补全 .config 中的依赖项
           make defconfig
 
-          # 定义安装函数：关键是使用 install 确保头文件进入 staging_dir
-          install_pkg() {
+          # 增强版编译函数
+          safe_build() {
             local name=$1
-            local path=$(find package -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
-            if [ -n "$path" ]; then
-              echo "Installing $name from $path"
-              make "$path/install" V=s
+            # 优先从 package/feeds 找，找不到再全局找
+            local p=$(find package/feeds -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
+            [ -z "$p" ] && p=$(find package -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
+            
+            if [ -n "$p" ]; then
+              echo ">>> Building $name in $p"
+              make "$p/install" V=s || make "$p/compile" V=s
             else
-              echo "Warning: $name not found, trying generic install"
-              make package/$name/install V=s || true
+              echo ">>> Skipping $name: Not found in package tree"
             fi
           }
 
-          # 1. 先安装所有底层库到 Staging 目录
-          install_pkg "libmnl"
-          install_pkg "libnetfilter-cthelper"
-          install_pkg "libnetfilter-queue"
-
-          # 2. 编译主程序
-          echo "Compiling apfree-wifidog..."
-          # 使用 compile 即可，因为它是最终目标
-          AP_PATH=$(find package -name Makefile | grep "/apfree-wifidog/Makefile" | sed 's|/Makefile||' | head -n 1)
-          make "$AP_PATH/compile" V=s
-
-          # 3. 编译 Luci
-          echo "Compiling Luci app..."
-          LUCI_PATH=$(find package -name Makefile | grep "/luci-app-apfree-wifidog/Makefile" | sed 's|/Makefile||' | head -n 1)
-          make "$LUCI_PATH/compile" V=s
+          # 按照正确的拓扑顺序编译
+          safe_build "libmnl"
+          safe_build "libnetfilter-cthelper"
+          safe_build "libnetfilter-queue"
+          safe_build "apfree-wifidog"
+          safe_build "luci-app-apfree-wifidog"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
