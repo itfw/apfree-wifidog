@@ -33,8 +33,17 @@ jobs:
       - name: Update all feeds and packages
         working-directory: openwrt-sdk
         run: |
-          # 更新所有 feeds
-          ./scripts/feeds update -a
+
+          cat > feeds.conf << EOF
+          src-git packages https://github.com/liudf0716/packages.git;chawrt/24.10
+          src-git luci https://github.com/liudf0716/luci.git;chawrt/24.10
+          src-git routing https://git.openwrt.org/feed/routing.git
+          src-git telephony https://git.openwrt.org/feed/telephony.git
+          EOF
+          
+          # 更新 feeds
+          ./scripts/feeds update -a -f feeds.conf
+          
           
           # 安装所有依赖包
           ./scripts/feeds install -a
