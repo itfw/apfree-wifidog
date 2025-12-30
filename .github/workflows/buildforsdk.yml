@@ -1,4 +1,4 @@
-name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Final Fixed
+name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Final Fixed Path
 
 on:
   workflow_dispatch:
@@ -44,45 +44,20 @@ jobs:
       - name: Patch apfree-wifidog Makefile
         working-directory: openwrt-sdk
         run: |
-          # 自动检测路径：支持 feeds 源码路径和 package 链接路径
-          PATH1="feeds/packages/net/apfree-wifidog/Makefile"
-          PATH2="package/feeds/packages/apfree-wifidog/Makefile"
+          # 动态寻找 Makefile 位置
+          MF=$(find . -name Makefile | grep "apfree-wifidog/Makefile" | head -n 1)
+          if [ -z "$MF" ]; then echo "Makefile not found"; exit 1; fi
           
-          if [ -f "$PATH1" ]; then
-            MF="$PATH1"
-          elif [ -f "$PATH2" ]; then
-            MF="$PATH2"
-          else
-            echo "ERROR: Makefile not found! Looking for it..."
-            MF=$(find . -name Makefile | grep apfree-wifidog | head -n 1)
-          fi
-
-          if [ -z "$MF" ] || [ ! -f "$MF" ]; then
-            echo "CRITICAL ERROR: Cannot locate Makefile."
-            exit 1
-          fi
-
-          echo "Target Makefile: $MF"
-
-          # 1. 修正 PKG_HASH
+          echo "Patching $MF"
           sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
-          
-          # 2. 补全缺失依赖 (libnetfilter-cthelper)
-          if ! grep -q "libnetfilter-cthelper" "$MF"; then
-            sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
-          fi
-          
-          # 3. 修复 Build/Compile 逻辑 (插入 CMake 调用)
-          # 注意：Makefile 必须使用 Tab 缩进，\t 会被 bash 解析为 Tab
+          sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
           if ! grep -q "CMake/Compile" "$MF"; then
             sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
-            echo "Successfully inserted CMake/Compile call."
           fi
 
       - name: Configure and Compile
         working-directory: openwrt-sdk
         run: |
-          # 写入最小化 .config
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
@@ -95,26 +70,23 @@ jobs:
           EOF
           
           make defconfig
-          
-          # 1. 预编译底层依赖 (解决 pkg-config 找不到 libmnl 的报错)
-          echo "Compiling base dependencies..."
-          make package/feeds/packages/libmnl/compile V=s
-          make package/feeds/packages/libnetfilter-cthelper/compile V=s
-          
-          # 2. 编译主程序
-          echo "Compiling apfree-wifidog..."
-          make package/feeds/packages/apfree-wifidog/compile V=s
-          
-          # 3. 编译 Luci 界面
-          echo "Compiling Luci interface..."
-          # 尝试多种可能的 Luci 路径
-          make package/feeds/luci/luci-app-apfree-wifidog/compile V=s || make package/luci-app-apfree-wifidog/compile V=s
 
-      - name: Check Built Packages
-        working-directory: openwrt-sdk
-        run: |
-          echo "Listing all generated IPK files:"
-          find bin/ -name "*.ipk" | grep -E "apfree|xdpi"
+          # 自动定位函数
+          build_pkg() {
+            local name=$1
+            local path=$(find package -name Makefile | grep "/$name/Makefile" | sed 's|/Makefile||' | head -n 1)
+            if [ -n "$path" ]; then
+              make "$path/compile" V=s
+            else
+              make package/$name/compile V=s || true
+            fi
+          }
+
+          # 按序编译
+          build_pkg "libmnl"
+          build_pkg "libnetfilter-cthelper"
+          build_pkg "apfree-wifidog"
+          build_pkg "luci-app-apfree-wifidog"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
