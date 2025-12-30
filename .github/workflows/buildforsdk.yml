@@ -1,4 +1,4 @@
-name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Optimized
+name: Build apfree-wifidog (OpenWrt 24.10.5, x86_64) - Full Suite
 
 on:
   workflow_dispatch:
@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     env:
       SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
       NEW_PKG_HASH: 9dfcae62ddd77c7c00eabc76b45acba10ec2cd1ec0dbb022bfd357dc178609a3
@@ -30,7 +29,7 @@ jobs:
           mkdir -p openwrt-sdk
           zstd -d --long=31 sdk.tar.zst -c | tar -x -C openwrt-sdk --strip-components=1
 
-      - name: Update all feeds and packages
+      - name: Update and Install Feeds
         working-directory: openwrt-sdk
         run: |
           cat > feeds.conf << EOF
@@ -39,94 +38,68 @@ jobs:
           src-git routing https://git.openwrt.org/feed/routing.git
           src-git telephony https://git.openwrt.org/feed/telephony.git
           EOF
-          
-          # 更新 feeds
           ./scripts/feeds update -a
-          
-          # 安装 feeds (先安装基础包，再安装全部以防遗漏)
-          ./scripts/feeds install -a -p packages
-          ./scripts/feeds install -a -p luci
           ./scripts/feeds install -a
 
-          # 清理可能存在的冲突
-          rm -rf tmp/
-          rm -f .config .config.old
-
-      - name: Patch apfree-wifidog Makefile
+      - name: Patch Remote Makefile
         working-directory: openwrt-sdk
         run: |
-          if [ -f "package/feeds/packages/apfree-wifidog/Makefile" ]; then
-            sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" \
-              package/feeds/packages/apfree-wifidog/Makefile
+          # 定位 Makefile
+          MF=$(find package/feeds/packages/ -name Makefile | grep "apfree-wifidog/Makefile")
+          if [ -f "$MF" ]; then
+            echo "Patching Makefile at $MF"
+            # 1. 修正 Hash
+            sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
+            # 2. 强行插入 CMake 编译指令（防止被 Build/Compile 覆盖）
+            sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
+            # 3. 补充依赖库声明
+            sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper/g' "$MF"
           fi
 
-      - name: Configure minimal build
+      - name: Configure Build
         working-directory: openwrt-sdk
         run: |
-          # 创建一个最小化配置
+          # 核心包配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_PACKAGE_apfree-wifidog=y
-          CONFIG_PACKAGE_libjson-c=y
-          CONFIG_PACKAGE_libevent2=y
-          CONFIG_PACKAGE_libevent2-openssl=y
-          CONFIG_PACKAGE_libuci=y
-          CONFIG_PACKAGE_libubox=y
+          CONFIG_PACKAGE_kmod-xdpi=y
+          # 依赖库确保开启
           CONFIG_PACKAGE_libmnl=y
-          CONFIG_PACKAGE_libnftnl=y
-          CONFIG_PACKAGE_libnetfilter-queue=y
           CONFIG_PACKAGE_libnetfilter-cthelper=y
-          CONFIG_PACKAGE_libmosquitto=y
-          CONFIG_PACKAGE_libopenssl=y
-          CONFIG_PACKAGE_openssl-util=y
-          CONFIG_PACKAGE_conntrack=y
-          CONFIG_PACKAGE_tc-full=y
-          CONFIG_PACKAGE_bpf-headers=y
-          CONFIG_PACKAGE_libbpf=y
-          CONFIG_PACKAGE_kmod-sched-bpf=y
-          CONFIG_PACKAGE_bpftool-minimal=y
+          # 你的 Luci 界面需求
           CONFIG_PACKAGE_luci-app-apfree-wifidog=y
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
           EOF
           
-          # 展开依赖关系，生成完整的 .config
+          # 扩展依赖并清理环境
           make defconfig
 
-      - name: Compile apfree-wifidog
+      - name: Compile Packages
         working-directory: openwrt-sdk
         run: |
-          echo "Starting compilation process..."
-          
-          # 1. 显式预编译底层依赖库 (解决 libmnl/pkg-config 报错的关键)
-          # 注意：V=s 显示详细日志，方便出错调试
-          echo "Pre-compiling libmnl..."
+          # 1. 优先编译底层核心库（防止并行报错）
           make package/feeds/packages/libmnl/compile V=s
-          
-          echo "Pre-compiling libnftnl..."
-          make package/feeds/packages/libnftnl/compile V=s
-          
-          echo "Pre-compiling libnetfilter-cthelper..."
           make package/feeds/packages/libnetfilter-cthelper/compile V=s
           
-          echo "Pre-compiling libnetfilter-queue..."
-          make package/feeds/packages/libnetfilter-queue/compile V=s
+          # 2. 编译主程序
+          make package/feeds/packages/apfree-wifidog/compile V=s
           
-          # 2. 编译目标插件
-          echo "Compiling apfree-wifidog..."
-          make package/apfree-wifidog/compile V=s
+          # 3. 编译 Luci 插件
+          # 注意：Luci 通常在 feeds/luci 目录下，我们直接用包名让 make 自动查找
+          make package/luci-app-apfree-wifidog/compile V=s
 
-      - name: Check and list built packages
+      - name: Check and List IPK Files
         working-directory: openwrt-sdk
         run: |
-          echo "Listing generated packages:"
-          find bin/ -name "*.ipk" -type f | grep -i apfree || true
-          find bin/ -name "*.ipk" -type f | head -20
+          echo "Built IPK files:"
+          find bin/ -name "*apfree*.ipk"
 
-      - name: Upload IPK files
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: apfree-wifidog-packages
+          name: apfree-wifidog-full-suite
           path: |
-            openwrt-sdk/bin/packages/**/*.ipk
-            openwrt-sdk/bin/targets/**/packages/*.ipk
+            openwrt-sdk/bin/packages/x86_64/**/*.ipk
+            openwrt-sdk/bin/targets/x86/64/packages/*.ipk
