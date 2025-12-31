@@ -50,17 +50,13 @@ jobs:
       - name: Patch apfree-wifidog Makefile
         working-directory: openwrt-sdk
         run: |
-          # 使用日志中确认的准确路径
           MF="package/feeds/packages/apfree-wifidog/Makefile"
           
           echo "Patching $MF"
-          # 1. 修正 Hash
           sed -i "s|PKG_HASH:=.*|PKG_HASH:=${NEW_PKG_HASH}|" "$MF"
           
-          # 2. 补全依赖声明 (必须包含 libnetfilter-cthelper)
           sed -i 's/+libmnl/+libmnl +libnetfilter-cthelper +libnetfilter-queue/g' "$MF"
           
-          # 3. 注入 CMake 调用 (注意 \t 必须是真正的 Tab)
           if ! grep -q "CMake/Compile" "$MF"; then
             sed -i '/define Build\/Compile/a \\t$(call CMake\/Compile)' "$MF"
           fi
@@ -78,40 +74,51 @@ jobs:
           #CONFIG_PACKAGE_libnetfilter-queue=y
           #CONFIG_PACKAGE_luci-app-apfree-wifidog=y
           #CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
+          
+          # 1. 基础应用包
           CONFIG_PACKAGE_apfree-wifidog=y
-          CONFIG_PACKAGE_zlib=y
-          CONFIG_PACKAGE_libjson-c=y
-          CONFIG_PACKAGE_libevent2=y
-          CONFIG_PACKAGE_libevent2-openssl=y
-          CONFIG_PACKAGE_libuci=y
-          CONFIG_PACKAGE_openssl-util=y
-          CONFIG_PACKAGE_libnetfilter-queue=y
-          CONFIG_PACKAGE_conntrack=y
-          CONFIG_PACKAGE_libmosquitto-ssl=y
-          CONFIG_PACKAGE_libnftnl=y
-          CONFIG_PACKAGE_libmnl=y
-          CONFIG_PACKAGE_tc-full=y
-          CONFIG_PACKAGE_kmod-xdpi=y
-          CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y
-          CONFIG_HAS_BPF_TOOLCHAIN=y
-          CONFIG_NEED_BPF_TOOLCHAIN=y
-          CONFIG_USE_LLVM_BUILD=y
-          CONFIG_PACKAGE_dnsmasq-full=y
-          CONFIG_PACKAGE_firewall4=y
-          CONFIG_PACKAGE_nftables=y
-          CONFIG_PACKAGE_iptables-nft=y
-          CONFIG_PACKAGE_kmod-nft-core=y
-          CONFIG_PACKAGE_kmod-nft-offload=y
-          CONFIG_PACKAGE_nftables-json=y
           CONFIG_PACKAGE_luci-app-apfree-wifidog=y
           CONFIG_PACKAGE_luci-i18n-apfree-wifidog-zh-cn=y
-          CONFIG_PACKAGE_libc=y
-          CONFIG_PACKAGE_libgcc=y
-          CONFIG_PACKAGE_libustream-mbedtls=y
-          CONFIG_DEFAULT_libc=y
-          CONFIG_DEFAULT_libgcc=y
+          
+          # 2. 关键内核模块 (解决崩溃的关键)
+          CONFIG_PACKAGE_kmod-xdpi=y
+          CONFIG_PACKAGE_kmod-nfnetlink-queue=y
+          CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
+          CONFIG_PACKAGE_kmod-nf-ipt-tproxy=y
+          CONFIG_PACKAGE_kmod-sched-bpf=y
+          CONFIG_PACKAGE_kmod-sched-core=y
+          
+          # 3. 运行时库支持
+          CONFIG_PACKAGE_libmnl=y
+          CONFIG_PACKAGE_libnetfilter-queue=y
+          CONFIG_PACKAGE_libnetfilter-conntrack=y
+          CONFIG_PACKAGE_libnetfilter-cthelper=y
+          CONFIG_PACKAGE_libnftnl=y
+          CONFIG_PACKAGE_libevent2=y
+          CONFIG_PACKAGE_libmosquitto=y
+          CONFIG_PACKAGE_libevent2-openssl=y
+          
+          # 4. 调试与 eBPF 工具
+          CONFIG_PACKAGE_bpftool-minimal=y
+          # 网络与 eBPF 核心 (防止 GPF)
+          CONFIG_PACKAGE_kmod-sched-bpf=y
+          CONFIG_PACKAGE_kmod-sched-core=y
+          CONFIG_PACKAGE_kmod-nfnetlink-queue=y
+          CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
+          
+          # 必需的协议支持
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_kmod-ipt-tproxy=y
+          
+          # 确保 BPF 字节码可以被正确加载
+          CONFIG_PACKAGE_libbpf=y
+          CONFIG_PACKAGE_bpftool-minimal=y
           EOF
           
+          # 刷新索引并应用配置
           make defconfig
           
           echo "Compiling base libraries..."
@@ -135,6 +142,7 @@ jobs:
           IPK_FILE=$(find bin/ -name "apfree-wifidog*.ipk" | grep -v "luci" | head -n 1)
           if [ -f "$IPK_FILE" ]; then
             echo "Checking contents of $IPK_FILE"
+            # 列出 data.tar.gz 里的内容，确认是否有可执行文件
             tar -ztf "$IPK_FILE"
           else
             echo "Main IPK not found!"
