@@ -116,6 +116,9 @@ jobs:
           # 确保 BPF 字节码可以被正确加载
           CONFIG_PACKAGE_libbpf=y
           CONFIG_PACKAGE_bpftool-minimal=y
+          CONFIG_KERNEL_BPF_EVENTS=y
+          CONFIG_KERNEL_DEBUG_INFO_BTF=y
+          CONFIG_PACKAGE_kmod-sched-bpf=y
           EOF
           
           # 刷新索引并应用配置
