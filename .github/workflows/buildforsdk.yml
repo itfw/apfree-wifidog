@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       #SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-      SDK_URL: https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+      SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
       NEW_PKG_HASH: 9dfcae62ddd77c7c00eabc76b45acba10ec2cd1ec0dbb022bfd357dc178609a3
 
     steps:
@@ -109,7 +109,7 @@ jobs:
           CONFIG_PACKAGE_libmosquitto=y
           CONFIG_PACKAGE_libevent2-openssl=y
           
-          # --- 4. BPF/BTF 核心环境 (解决报错的关键) ---
+          # --- 4. BPF/BTF 核心环境 ---
           # [重点] 使用完整版 bpftool，切勿用 minimal
           CONFIG_PACKAGE_bpftool=y
           CONFIG_PACKAGE_libbpf=y
@@ -124,7 +124,7 @@ jobs:
           CONFIG_PACKAGE_kmod-lib-bpf=y
           CONFIG_PACKAGE_kmod-btf=y
           
-          # [重点] 告知 SDK 内核具备这些能力 (欺骗编译系统开启宏)
+          # [重点] 告知 SDK 内核具备这些能力
           CONFIG_KERNEL_BPF_EVENTS=y
           CONFIG_KERNEL_DEBUG_INFO_BTF=y
           CONFIG_KERNEL_DEBUG_INFO=y
