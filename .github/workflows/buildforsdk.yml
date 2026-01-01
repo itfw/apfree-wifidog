@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       #SDK_URL: https://mirrors.aliyun.com/openwrt/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-      SDK_URL: https://downloads.openwrt.org/releases/24.10-SNAPSHOT/targets/x86/64/openwrt-sdk-24.10-SNAPSHOT-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+      SDK_URL: https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
       NEW_PKG_HASH: 9dfcae62ddd77c7c00eabc76b45acba10ec2cd1ec0dbb022bfd357dc178609a3
 
     steps:
@@ -78,6 +78,8 @@ jobs:
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
+          CONFIG_KERNEL_MAGICVER=y
+          CONFIG_KERNEL_VERMAGIC="484466e2719a743506c36b4bb2103582"
           
           # 1. 基础应用包
           CONFIG_PACKAGE_apfree-wifidog=y
